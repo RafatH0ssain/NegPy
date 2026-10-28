@@ -3948,6 +3948,44 @@ class TestPresetExportSelected(unittest.TestCase):
         mock_found.assert_not_called()
         self.assertNotIn("locked_floors", self.controller.set_roll_default.call_args.kwargs)
 
+    def _average_peek_setup(self, found=True):
+        import numpy as np
+
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.mock_session_manager.state.preview_raw = np.zeros((4, 4, 3), dtype=np.float32)
+        self.controller.request_render = MagicMock()
+        saved = ({"floors": (0.1,) * 3, "ceils": (0.9,) * 3, "axis": None, "outliers": ()}, "roll:roll-1")
+        return patch.object(rolls, "frame_saved_baseline", return_value=saved if found else None)
+
+    def test_the_average_peek_prints_on_the_roll_baseline_without_an_edit(self):
+        with self._average_peek_setup():
+            self.controller.toggle_average_peek()
+
+        state = self.mock_session_manager.state
+        self.assertTrue(state.average_peek)
+        self.assertEqual(state.average_peek_axes, {"use_luma_average": True, "use_color_average": True, "use_cast_average": False})
+        override = self.controller.request_render.call_args.kwargs["config_override"].process
+        self.assertTrue(override.use_luma_average and override.use_color_average)
+        self.assertEqual(override.locked_floors, (0.1,) * 3)
+        self.assertFalse(state.config.process.use_luma_average)
+        self.mock_session_manager.update_config.assert_not_called()
+
+    def test_the_average_peek_waits_for_a_baseline(self):
+        with self._average_peek_setup(found=False):
+            self.controller.toggle_average_peek()
+        self.assertFalse(self.mock_session_manager.state.average_peek)
+        self.controller.request_render.assert_not_called()
+
+    def test_keep_writes_the_peeks_averages_as_one_edit(self):
+        self.controller.set_roll_average = MagicMock()
+        with self._average_peek_setup():
+            self.controller.toggle_average_peek()
+            self.controller.set_average_peek_axes(use_color_average=False)
+            self.controller.keep_average_peek()
+
+        self.assertFalse(self.mock_session_manager.state.average_peek)
+        self.controller.set_roll_average.assert_called_once_with(use_luma_average=True, use_color_average=False, use_cast_average=False)
+
     def test_no_pooled_axis_leaves_cast_average_off(self):
         self.mock_session_manager.repo.load_file_settings.return_value = None
         self.mock_session_manager.config_for_asset.return_value = WorkspaceConfig()

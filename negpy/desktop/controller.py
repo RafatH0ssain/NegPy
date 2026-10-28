@@ -500,6 +500,8 @@ _NOTHING_TO_APPLY = tr("Nothing to apply: every card already follows the roll")
 ROLL_ANALYSIS_NEEDS_A_ROLL = tr("Open or save a roll to use Roll Analysis.")
 SCENES_NEED_A_ROLL = tr("Open or save a roll to use scenes.")
 
+_AVERAGE_FIELDS = ("use_luma_average", "use_color_average", "use_cast_average")
+
 
 def _kept_own_exposure(count: int) -> str:
     locked = count_of(count, "locked frame")
@@ -616,6 +618,7 @@ class AppController(QObject):
     bake_on_export_changed = pyqtSignal(bool)
     flat_peek_changed = pyqtSignal(bool)
     negative_peek_changed = pyqtSignal(bool)
+    average_peek_changed = pyqtSignal(bool)
     embedded_peek_changed = pyqtSignal(bool)
     flatfield_peek_changed = pyqtSignal(bool)
     export_size_view_changed = pyqtSignal(bool)
@@ -4514,6 +4517,9 @@ class AppController(QObject):
         self.request_render()
 
     def reset_all_peeks(self) -> None:
+        if self.state.average_peek:
+            self.state.average_peek = False
+            self.average_peek_changed.emit(False)
         if self.state.flat_peek:
             self.state.flat_peek = False
             self.flat_peek_changed.emit(False)
@@ -6114,15 +6120,80 @@ class AppController(QObject):
         if "use_luma_average" in axis or "use_color_average" in axis:
             # The other axis re-derives per frame; roll_name drops since a picked baseline no longer applies whole.
             changes.update(roll_name=None, **invalidate_local_bounds(process))
-        kind = process.baseline_source.partition(":")[0]
-        if any(axis.values()) and not process.lock_bounds and kind in ("", "roll", "scene") and self.state.current_file_hash:
-            found = rolls.frame_saved_baseline(self.session.repo, self.state.active_roll_id, self.state.current_file_hash)
-            if found is not None:
-                saved, source = found
-                changes.update(
-                    locked_floors=saved["floors"], locked_ceils=saved["ceils"], locked_neutral_axis=saved["axis"], baseline_source=source
-                )
+        if any(axis.values()):
+            changes.update(self._saved_baseline_fields(process))
         self.set_roll_default("baseline", **changes)
+
+    def _saved_baseline_fields(self, process) -> dict:
+        """The scene or roll baseline the active frame's Use Average reads, as process fields; none
+        for a frame with Lock Bounds or a baseline taken from another frame."""
+        kind = process.baseline_source.partition(":")[0]
+        if process.lock_bounds or kind not in ("", "roll", "scene") or not self.state.current_file_hash:
+            return {}
+        found = rolls.frame_saved_baseline(self.session.repo, self.state.active_roll_id, self.state.current_file_hash)
+        if found is None:
+            return {}
+        saved, source = found
+        return {
+            "locked_floors": saved["floors"],
+            "locked_ceils": saved["ceils"],
+            "locked_neutral_axis": saved["axis"],
+            "baseline_source": source,
+        }
+
+    def toggle_average_peek(self, force: Optional[bool] = None) -> None:
+        """Print the frame on the roll average without changing the edit. Opens with the frame's
+        own averages, or Luma and Color (and Cast where it applies) when it uses none."""
+        if self.state.preview_raw is None:
+            return
+        target = (not self.state.average_peek) if force is None else force
+        if target == self.state.average_peek:
+            return
+        process = self.state.config.process
+        if target:
+            if not self._saved_baseline_fields(process):
+                self.set_status(tr("No roll baseline for this frame yet"), 3000)
+                self.average_peek_changed.emit(False)
+                return
+            self.exit_compare()
+            self.reset_all_peeks()
+            self._clear_test_strip()
+            axes = {f: bool(getattr(process, f)) for f in _AVERAGE_FIELDS}
+            if not any(axes.values()):
+                axes = {"use_luma_average": True, "use_color_average": True, "use_cast_average": self._cast_average_applies()}
+            self.state.average_peek_axes = axes
+        self.state.average_peek = target
+        self.average_peek_changed.emit(target)
+        if target:
+            self._render_average_peek()
+        else:
+            self.request_render()
+
+    def _cast_average_applies(self) -> bool:
+        process = self.state.config.process
+        return process.process_mode == ProcessMode.C41 and self._saved_baseline_fields(process).get("locked_neutral_axis") is not None
+
+    def set_average_peek_axes(self, **axes: bool) -> None:
+        if not self.state.average_peek:
+            return
+        self.state.average_peek_axes = {**self.state.average_peek_axes, **axes}
+        self.average_peek_changed.emit(True)
+        self._render_average_peek()
+
+    def _render_average_peek(self) -> None:
+        process = self.state.config.process
+        axes = self.state.average_peek_axes
+        peek = replace(process, **axes, **(self._saved_baseline_fields(process) if any(axes.values()) else {}))
+        self.request_render(readback_metrics=False, config_override=replace(self.state.config, process=peek))
+
+    def keep_average_peek(self) -> None:
+        """Apply: the peek's averages become the frame's, as one edit."""
+        if not self.state.average_peek:
+            return
+        axes = dict(self.state.average_peek_axes)
+        self.state.average_peek = False
+        self.average_peek_changed.emit(False)
+        self.set_roll_average(**axes)
 
     def request_reset_roll(self) -> None:
         """Reset every visible frame to its own bare defaults -- Reset Settings, applied
@@ -7774,6 +7845,9 @@ class AppController(QObject):
         if config_override is None and self.state.flat_peek:
             self.state.flat_peek = False
             self.flat_peek_changed.emit(False)
+        if config_override is None and self.state.average_peek:
+            self.state.average_peek = False
+            self.average_peek_changed.emit(False)
         if config_override is None and (self.state.negative_peek or self.state.embedded_peek) and not self._peek_shows(self.state.config):
             self.reset_all_peeks()
 
@@ -8005,6 +8079,8 @@ class AppController(QObject):
             self.reset_all_peeks()
         if self.state.flatfield_peek:
             self._paint_flatfield_peek()
+        elif self.state.average_peek:
+            self._render_average_peek()
         elif self.state.flat_peek:
             self.request_render(readback_metrics=False, config_override=flat_master_config(self.state.config))
         else:
