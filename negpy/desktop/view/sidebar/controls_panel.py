@@ -22,7 +22,7 @@ from negpy.features.process.models import auto_meter_for_mode, cast_removal_for_
 from negpy.features.finish.models import FinishConfig
 from negpy.features.flatfield.models import FlatFieldConfig
 from negpy.kernel.system.config import DEFAULT_WORKSPACE_CONFIG
-from negpy.services.assets.rolls import ROLL_DEFAULT_FIELDS
+from negpy.services.assets.rolls import ROLL_DEFAULT_FIELDS, card_fields
 from negpy.desktop.settings_catalog import (
     COLOR_FIELDS,
     CROP_FIELDS,
@@ -31,6 +31,7 @@ from negpy.desktop.settings_catalog import (
     PAPER_FIELDS,
     TONE_FIELDS,
     frame_card_rows,
+    rows_for_fields,
 )
 from negpy.desktop.view.widgets.granular_settings_dialog import open_apply_dialog
 from negpy.desktop.view.widgets.tab_header import TabHeader
@@ -568,15 +569,20 @@ class ControlsPanel(QWidget):
     def _show_card_menu(self, key: str, section: CollapsibleSection, pos) -> None:
         menu = QMenu(self)
         menu.setToolTipsVisible(True)
-        if key in dict(self._roll_sections()):
+        roll_card = key in dict(self._roll_sections())
+        if roll_card:
+            rows = rows_for_fields(f for card in _SECTION_CARDS.get(key, (key,)) for f in card_fields(card))
+        else:
+            rows = frame_card_rows(key)
+        copy = menu.addAction(tr("Copy Card Settings"))
+        copy.setToolTip(tr("Copy this card alone; Paste then offers only its settings"))
+        copy.setEnabled(bool(rows))
+        copy.triggered.connect(lambda: self.controller.session.copy_card_settings(rows))
+        if roll_card:
             undo = menu.addAction(label_with_shortcut(tr("Undo Apply to Roll"), "undo_roll_push"))
             undo.setToolTip(tr("Give the roll back the values it had before the last Roll push from this frame"))
             undo.setEnabled(self.controller.can_undo_roll_push(_SECTION_CARDS.get(key, (key,))))
             undo.triggered.connect(self.controller.undo_roll_push)
-        else:
-            copy = menu.addAction(tr("Copy Card Settings"))
-            copy.setToolTip(tr("Copy this card alone; Paste then offers only its settings"))
-            copy.triggered.connect(lambda: self.controller.session.copy_card_settings(frame_card_rows(key)))
         menu.exec(section.toggle_button.mapToGlobal(pos))
 
     def apply_shortcut_tooltips(self) -> None:

@@ -193,11 +193,22 @@ class TestExportDestinationMigration(unittest.TestCase):
 
 
 class TestAlwaysSticky(unittest.TestCase):
-    def test_scan_prefs_are_not_catalog_rows(self):
-        """They must stay out, or preset "Replace look" would reset the decode mode."""
-        catalog_fields = {f for r in all_rows() for f in r.fields}
+    def test_scan_prefs_stay_out_of_the_replace_look_set(self):
+        """Preset "Replace Look" must not reset the decode mode, or it forces a re-decode."""
+        from negpy.desktop.view.sidebar.presets import _LOOK_ROWS
+
+        look_fields = {f for r in _LOOK_ROWS for f in r.fields}
         for _key, field in ALWAYS_STICKY_PROCESS:
-            self.assertNotIn(field, catalog_fields)
+            self.assertNotIn(field, look_fields)
+
+    def test_scan_prefs_are_not_offered_as_carry_rows(self):
+        """They always carry, so the carry picker leaves their section out."""
+        from negpy.desktop.settings_catalog import CATALOG
+        from negpy.desktop.sticky import ALWAYS_STICKY_SECTIONS
+
+        offered = {f for title, rows in CATALOG if title not in ALWAYS_STICKY_SECTIONS for r in rows for f in r.fields}
+        for _key, field in ALWAYS_STICKY_PROCESS:
+            self.assertNotIn(field, offered)
 
 
 if __name__ == "__main__":

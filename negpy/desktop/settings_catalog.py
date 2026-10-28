@@ -19,6 +19,7 @@ from negpy.domain.models import WorkspaceConfig
 from negpy.features.exposure.papers import PAPER_PROFILES
 from negpy.features.geometry.models import with_auto_crop_field
 from negpy.features.metadata.capture import place_summary
+from negpy.features.process.logic import VALID_HIGHLIGHT_LEVELS
 from negpy.features.metadata.models import GEAR_FIELDS, PROCESS_FIELDS, PUSH_PULL_LABELS, SCANNING_FIELDS
 from negpy.features.process.models import invalidate_local_bounds, with_film_fields
 from negpy.services.assets.flatfield import FlatFieldProfiles
@@ -114,6 +115,18 @@ def _fmt_flatfield(values: tuple) -> str:
     return profile.name if profile else _fmt_scalar(True)
 
 
+def _fmt_white_balance(values: tuple) -> str:
+    return tr("Linear RAW") if values[0] else tr("Camera WB")
+
+
+def _fmt_highlights(values: tuple) -> str:
+    """The Raw Decode card's three choices: an invalid level decodes as Off, any other non-Blend level is Reconstruct."""
+    level = values[0]
+    if level not in VALID_HIGHLIGHT_LEVELS or level == 0:
+        return tr("Off")
+    return tr("Blend") if level == 2 else tr("Reconstruct")
+
+
 # fmt: off
 CATALOG: list[tuple[str, tuple[SettingRow, ...]]] = [
     (mark("Setup"), (
@@ -142,6 +155,12 @@ CATALOG: list[tuple[str, tuple[SettingRow, ...]]] = [
         _row(mark("Sensor Crosstalk Profile"), "process", "sensor_profile", "sensor_matrix", "sensor_unmix", fmt=lambda v: _fmt_scalar(v[0]), sticky=True),
         # Absent from BOUNDS_INPUT_FIELDS: it acts after inversion, so it never feeds the meters.
         _row(mark("Hue Trim"), "process", "hue_trim", sticky=True),
+    )),
+    (mark("Raw Decode"), (
+        _row(mark("White Balance"), "process", "linear_raw", fmt=_fmt_white_balance),
+        _row(mark("Demosaic Preview"), "process", "demosaic_preview"),
+        _row(mark("Demosaic Export"), "process", "demosaic_export"),
+        _row(mark("Highlight Recovery"), "process", "highlight_reconstruction", fmt=_fmt_highlights),
     )),
     (mark("Crop"), (
         _row(mark("Auto Crop"), "geometry", "crop_from_auto", sticky=True),
@@ -347,6 +366,8 @@ BOUNDS_INPUT_FIELDS = frozenset(
         "sensor_profile",
         "sensor_matrix",
         "sensor_unmix",
+        # Camera WB or neutral changes the decoded source the meters read.
+        "linear_raw",
         "crop_from_auto",
         "autocrop_offset",
         "autocrop_rebate_trim",
@@ -402,10 +423,6 @@ _UNLISTED_CARD = {
     "export": mark("Export"),
 }
 _UNLISTED_FIELD_CARD = {
-    "linear_raw": mark("Raw Decode"),
-    "demosaic_preview": mark("Raw Decode"),
-    "demosaic_export": mark("Raw Decode"),
-    "highlight_reconstruction": mark("Raw Decode"),
     "crosstalk_process": mark("Calibration"),
 }
 

@@ -3,9 +3,10 @@ the flat-dict merge apply path, and preset_summary tooltips."""
 
 from dataclasses import replace
 
-from negpy.desktop.settings_catalog import all_rows, preset_summary, selected_flat_dict
+from negpy.desktop.settings_catalog import all_rows, apply_selected_fields, preset_summary, rows_for_fields, selected_flat_dict
 from negpy.domain.models import WorkspaceConfig
-from negpy.features.process.models import ProcessMode
+from negpy.features.process.models import DemosaicMode, ProcessMode
+from negpy.services.assets.rolls import card_fields
 
 
 def _row(label: str):
@@ -40,6 +41,24 @@ def test_positive_source_row_is_catalogued():
     cfg = replace(base, process=replace(base.process, process_mode=ProcessMode.E6, positive_source=True))
     data = selected_flat_dict(cfg, [_row("Positive")])
     assert data == {"positive_source": True}
+
+
+def test_every_raw_decode_field_has_a_row():
+    """Copy, Paste and the Roll tab's Apply offer only catalog rows."""
+    listed = {f for r in rows_for_fields(card_fields("demosaic")) for f in r.fields}
+    assert listed == set(card_fields("demosaic"))
+
+
+def test_pasting_raw_decode_carries_its_values_and_remeters_on_white_balance():
+    base = WorkspaceConfig()
+    src = replace(
+        base,
+        process=replace(base.process, linear_raw=True, demosaic_export=DemosaicMode.DCB, highlight_reconstruction=2),
+    )
+    target = replace(base, process=replace(base.process, local_floors=(0.1, 0.1, 0.1), local_ceils=(0.9, 0.9, 0.9)))
+    out = apply_selected_fields(src, target, rows_for_fields(card_fields("demosaic")))
+    assert (out.process.linear_raw, out.process.demosaic_export, out.process.highlight_reconstruction) == (True, DemosaicMode.DCB, 2)
+    assert not out.process.is_local_initialized
 
 
 def test_overlay_apply_preserves_unrelated_edits():

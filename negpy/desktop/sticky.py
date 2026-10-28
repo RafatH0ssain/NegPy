@@ -34,9 +34,9 @@ _CATALOG_EXPORT_FIELDS = frozenset(f for title, rows in CATALOG if title == "Exp
 # leave one silently uncarried.
 EXPORT_REMAINDER: frozenset[str] = frozenset(ExportConfig.__dataclass_fields__) - _CATALOG_EXPORT_FIELDS
 
-# Scan-setup preferences, carried unconditionally for the same reason. Kept out of the
-# catalog because that would put them in the preset "Replace look" set, where resetting
-# the decode mode would force a re-decode.
+# Scan-setup preferences, carried unconditionally for the same reason, so the carry picker
+# leaves out the catalog section that lists them.
+ALWAYS_STICKY_SECTIONS: frozenset[str] = frozenset({"Raw Decode"})
 ALWAYS_STICKY_PROCESS: tuple[tuple[str, str], ...] = (
     ("last_linear_raw", "linear_raw"),
     ("last_demosaic_preview", "demosaic_preview"),

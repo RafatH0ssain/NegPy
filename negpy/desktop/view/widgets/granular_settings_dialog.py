@@ -713,11 +713,11 @@ def open_sticky_dialog(parent, controller) -> None:
     """Pick which settings carry onto a freshly-opened file. Values shown are the last
     saved edit's, so the list reads as what would actually carry."""
     from negpy.domain.models import WorkspaceConfig
-    from negpy.desktop.sticky import load_sticky_config, load_sticky_rows, save_sticky_rows
+    from negpy.desktop.sticky import ALWAYS_STICKY_SECTIONS, load_sticky_config, load_sticky_rows, save_sticky_rows
 
     repo = controller.session.repo
     source = load_sticky_config(repo) or WorkspaceConfig()
     chosen = frozenset(r.id for r in load_sticky_rows(repo))
-    dlg = GranularSettingsDialog(parent, source, "", preselect_ids=chosen, repo=repo)
+    dlg = GranularSettingsDialog(parent, source, "", preselect_ids=chosen, exclude_sections=ALWAYS_STICKY_SECTIONS, repo=repo)
     if dlg.exec() == QDialog.DialogCode.Accepted:
         save_sticky_rows(repo, dlg.selected_ids())
