@@ -55,7 +55,7 @@ def _make_toolbar() -> ActionToolbar:
     return ActionToolbar(controller)
 
 
-def _repo(stored, added=("tools", "export")) -> MagicMock:
+def _repo(stored, added=("tools", "export", "average")) -> MagicMock:
     """A stored row whose new items were already offered, unless *added* says otherwise."""
     repo = MagicMock()
     settings = {"toolbar_items": stored, "toolbar_added_items": list(added)}
@@ -351,14 +351,18 @@ class TestToolbarCustomization(unittest.TestCase):
         repo.save_global_setting.assert_not_called()
 
     def test_a_stored_row_gets_tools_once_before_undo(self):
-        repo = _repo(["prev", "undo", "redo"], added=("export",))
+        repo = _repo(["prev", "undo", "redo"], added=("export", "average"))
         self.assertEqual(load_toolbar_items(repo), ["prev", "tools", "undo", "redo"])
         repo.save_global_settings.assert_called_once_with(
-            {"toolbar_items": ["prev", "tools", "undo", "redo"], "toolbar_added_items": ["export", "tools"]}
+            {"toolbar_items": ["prev", "tools", "undo", "redo"], "toolbar_added_items": ["average", "export", "tools"]}
         )
 
+    def test_a_stored_row_gets_roll_average_once_before_export(self):
+        repo = _repo(["prev", "source", "export"], added=("tools", "export"))
+        self.assertEqual(load_toolbar_items(repo)[-3:], ["source", "average", "export"])
+
     def test_a_stored_row_without_undo_gets_tools_last(self):
-        self.assertEqual(load_toolbar_items(_repo(["prev", "next"], added=())), ["prev", "next", "tools", "export"])
+        self.assertEqual(load_toolbar_items(_repo(["prev", "next"], added=("average",))), ["prev", "next", "tools", "export"])
 
     def test_a_removed_tools_button_stays_removed(self):
         repo = _repo(["prev", "undo"])
@@ -716,7 +720,7 @@ class TestExportMirror(unittest.TestCase):
         self.assertEqual(tb.btn_export.toolTip(), "Export every visible frame")
 
     def test_a_stored_row_gets_export_once_before_overlays(self):
-        repo = _repo(["source", "overlays"], added=("tools",))
+        repo = _repo(["source", "overlays"], added=("tools", "average"))
         self.assertEqual(load_toolbar_items(repo), ["source", "export", "overlays"])
 
     def test_on_the_stock_row_and_hideable(self):
@@ -1182,3 +1186,35 @@ def test_the_average_peek_shows_its_row_and_right_click_turns_every_average_on(q
     assert tb.average_axes.text().strip() == "Luma"
     QTest.mouseClick(tb.average_axes, Qt.MouseButton.RightButton)
     tb.controller.set_average_peek_axes.assert_called_with(use_luma_average=True, use_color_average=True)
+
+
+def _average_toolbar(baseline):
+    tb = _make_toolbar()
+    process = WorkspaceConfig().process
+    tb.session.state.config.process = process
+    tb.session.state.active_roll_id = "r1"
+    tb.session.state.current_file_hash = "h1"
+    tb.controller.measuring_roll_baseline.return_value = False
+    with patch("negpy.desktop.view.canvas.toolbar.rolls.frame_saved_baseline", return_value=baseline):
+        tb._sync_average_menu()
+    return tb
+
+
+def test_the_bar_average_button_waits_for_a_roll_baseline(qapp):
+    tb = _average_toolbar(None)
+    assert not tb.average_menu.isEnabled()
+    assert "No roll baseline" in tb.average_menu.toolTip()
+
+
+def test_the_bar_average_button_writes_one_axis_and_right_click_writes_all(qapp):
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    tb = _average_toolbar(({"floors": (0.0,) * 3, "ceils": (1.0,) * 3, "axis": None, "outliers": ()}, "roll:r1"))
+    assert tb.average_menu.isEnabled()
+    assert not tb.average_menu.isChecked()
+    tb._average_menu_actions["use_luma_average"].trigger()
+    tb.controller.set_roll_average.assert_called_with(use_luma_average=True)
+    QTest.mouseClick(tb.average_menu, Qt.MouseButton.RightButton)
+    # Cast waits for a neutral axis, so right-click leaves it out.
+    tb.controller.set_roll_average.assert_called_with(use_luma_average=True, use_color_average=True)

@@ -28,7 +28,7 @@ For the math behind each step, read [PIPELINE.md](PIPELINE.md).
 
 *   **Canvas** (center): the picture. Scroll or pinch to zoom, drag to pan, and double-click to switch between fit and 100%. Right-click for view options, copy and paste of settings, resets and **Unload**.
 *   **Film Strip** (under the canvas): the open frames in one row. Drag its top edge to resize it; `Ctrl+[` folds it away.
-*   **Toolbar** (bottom): **Photo** holds navigation, zoom, rotate, **Tools** (crop, pickers, masks, retouching), undo, the **Print** menu (Before / After and the peeks), **Export** and **Overlays**. **Export** does what the Export panel's button does, and its chevron picks the frames. **Roll** holds the Film Strip's import, filter, sort and roll actions. The **⋯** menu holds every action, **Preferences…** included.
+*   **Toolbar** (bottom): **Photo** holds navigation, zoom, rotate, **Tools** (crop, pickers, masks, retouching), undo, the **Print** menu (Before / After and the peeks), **Roll Average**, **Export** and **Overlays**. **Export** does what the Export panel's button does, and its chevron picks the frames. **Roll** holds the Film Strip's import, filter, sort and roll actions. The **⋯** menu holds every action, **Preferences…** included.
 *   **Controls** (right): the tabs **Library**, **Roll**, **Frame**, **Metadata**, **Export** and **Scan**. Only Roll and Frame change the picture. Drag the panel by its top edge to float it.
 *   **Frame Info** (`I`): the strip above the canvas. It shows the file name, film and size on the left, the print recipe on the right, and messages in the middle. A running job fills the bar along its bottom edge, one segment per frame for a short batch; **Abort** stops it.
 
@@ -82,6 +82,7 @@ A new frame gets the roll's film type, and the crop, print stock and Lab setting
 *   **Before / After** (`\`, or the **Print** menu): splits the canvas between the default conversion and your edit. Hold `\` to see the default alone. To compare with an earlier version, right-click it in **History**.
 *   **Peeks**: hold `N` for the scan as loaded (the negative), `M` for the flat master, and `P` for the camera's own JPEG. The **Print** menu has them too.
 *   **Roll Average** (`U`, or the **Print** menu): prints this frame on the roll's average and changes nothing. The bar shows which averages it uses; right-click there turns them all on or off. **Apply** saves them to the frame.
+*   **Roll Average** button (filmstrip icon on the toolbar): turns Luma, Color or Cast on for this frame at once, as one edit. Right-click turns them all on or off. An amber icon marks a frame far from the roll color. **Preview Roll Average** in its menu opens the peek.
 *   **Export Size** (**Print** menu): shows the frame as it exports, at the size the **Export** panel sets, at 100%. Use it to judge sharpening and grain. It updates a moment after each edit.
 *   **Grain Focuser** (`Shift+L`, **Overlays** menu): a magnifier at the pointer that shows the exported pixels at their true size, with a sharpness number.
 *   **Reference View** (`Shift+R`): pins this frame beside the canvas, to match other frames to it.
