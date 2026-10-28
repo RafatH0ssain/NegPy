@@ -142,8 +142,7 @@ def test_average_toggles_ride_the_baseline_bar_not_the_analysis(qapp):
     """Use Luma/Color Average is about the roll baseline, so it travels with the picker
     in baseline_bar, apart from the metering controls."""
     _, sidebar = _sidebar()
-    bar = sidebar.baseline_bar.layout()
-    assert _row_index_containing(bar, sidebar.use_luma_avg_btn) == _row_index_containing(bar, sidebar.use_color_avg_btn)
+    assert sidebar.baseline_bar.isAncestorOf(sidebar.use_avg_btn)
     for widget in (sidebar.luma_range_clip_slider, sidebar.white_point_slider):
         assert not sidebar.baseline_bar.isAncestorOf(widget)
 
@@ -182,8 +181,34 @@ def test_average_toggles_hide_on_the_transparency_transfer(qapp):
     cfg = controller.state.config
     controller.state.config = replace(cfg, process=replace(cfg.process, process_mode=ProcessMode.E6))
     sidebar.sync_ui()
-    assert sidebar.use_luma_avg_btn.isHidden()
-    assert sidebar.use_color_avg_btn.isHidden()
+    assert sidebar.use_avg_btn.isHidden()
+
+
+def test_the_average_button_names_the_averages_in_use(qapp):
+    controller, sidebar = _sidebar()
+    cfg = controller.state.config
+    sidebar.sync_ui()
+    assert sidebar.use_avg_btn.text().strip() == "Off"
+    assert not sidebar.use_avg_btn.isChecked()
+
+    controller.state.config = replace(cfg, process=replace(cfg.process, use_luma_average=True, use_color_average=True))
+    sidebar.sync_ui()
+    assert sidebar.use_avg_btn.text().strip() == "Luma, Color"
+    assert sidebar.use_avg_btn.isChecked()
+
+
+def test_a_right_click_on_the_average_button_turns_every_average_on(qapp):
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    controller, sidebar = _sidebar()
+    controller.state.active_roll_id = "roll-1"
+    controller.state.config = replace(
+        controller.state.config, process=replace(controller.state.config.process, process_mode=ProcessMode.BW)
+    )
+    sidebar.sync_ui()
+    QTest.mouseClick(sidebar.use_avg_btn, Qt.MouseButton.RightButton)
+    controller.set_roll_average.assert_called_with(use_luma_average=True, use_color_average=True)
 
 
 def test_use_luma_average_toggle_reaches_the_controller(qapp):

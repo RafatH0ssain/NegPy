@@ -70,15 +70,48 @@ class MenuButton(_MenuButton):
 class ToggleMenuButton(_MenuButton):
     """Several independent on/off options behind one button, in the tool-toggle look with no
     chevron. The button takes the checked look while any option is on; an empty label leaves
-    it icon-only."""
+    it icon-only. With *toggle_all*, a right-click emits toggledAll: True unless every shown,
+    enabled option is on. The owner applies it as one edit."""
 
-    def __init__(self, icon_name: str, label: str, tooltip: str, parent=None):
+    toggledAll = pyqtSignal(bool)
+
+    def __init__(self, icon_name: str, label: str, tooltip: str, parent=None, toggle_all: bool = False):
         super().__init__(tooltip, parent)
         self.setStyleSheet(tool_toggle_qss(icon_only=not label))
         self.setCheckable(True)
         self.setIcon(qta.icon(icon_name, color=THEME.text_hint, color_on=THEME.text_primary, color_disabled=THEME.text_muted))
         self.setText(f" {label}" if label else "")
         self._toggles: list[QAction] = []
+        self._toggle_all = toggle_all
+
+    def mirror_right_click(self, widget: QWidget) -> None:
+        """*widget*, another button for this one's menu, takes the same right-click."""
+        widget.installEventFilter(self)
+
+    def _toggle_all_on_right_click(self, event) -> bool:
+        """True when *event* was the right-click toggle; the context menu event it leads to is
+        eaten too, so no parent menu opens over it."""
+        if not self._toggle_all:
+            return False
+        if event.type() == QEvent.Type.ContextMenu:
+            return True
+        if event.type() != QEvent.Type.MouseButtonPress or event.button() != Qt.MouseButton.RightButton:
+            return False
+        options = [a for a in self._toggles if a.isVisible() and a.isEnabled()]
+        if options:
+            self.toggledAll.emit(not all(a.isChecked() for a in options))
+        return True
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if not self._toggle_all_on_right_click(event):
+            super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802
+        if not self._toggle_all_on_right_click(event):
+            super().contextMenuEvent(event)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        return self._toggle_all_on_right_click(event) or super().eventFilter(obj, event)
 
     def add_toggle(self, label: str, tooltip: str) -> QAction:
         action = QAction(label, self)

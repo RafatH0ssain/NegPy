@@ -16,6 +16,7 @@ from negpy.desktop.view.styles.templates import (
     ICON_BUTTON_WIDTH,
     clearable_tool_toggle,
     hint_label,
+    icon_text,
     header_row,
     section_subheader,
     set_hint_kind,
@@ -25,7 +26,7 @@ from negpy.desktop.view.widgets.stats import CLIPPING_TOOLTIP
 from negpy.features.exposure.stats import clipping_row
 from negpy.services.assets import rolls
 from negpy.desktop.view.styles.theme import THEME
-from negpy.desktop.view.widgets.segmented_choice import SegmentedChoice
+from negpy.desktop.view.widgets.segmented_choice import SegmentedChoice, ToggleMenuButton
 from negpy.desktop.view.widgets.fold import group_fold, rail_fold
 from negpy.desktop.view.widgets.sliders import CompactSlider
 from negpy.features.exposure.models import EXPOSURE_CONSTANTS
@@ -205,29 +206,25 @@ class ProcessSidebar(BaseSidebar):
         baseline_col.addWidget(self.avg_header)
         self.baseline_source_hint = hint_label("")
         baseline_col.addWidget(self.baseline_source_hint)
-        avg_row = QHBoxLayout()
-        self.use_luma_avg_btn = self._small_toggle(
-            "mdi6.brightness-6",
-            tr("Luma"),
-            conf.use_luma_average,
-            tr("Use the roll's average black and white points, with color still per frame."),
+        self.use_avg_btn = ToggleMenuButton(
+            "mdi6.filmstrip",
+            tr("Off"),
+            tr("Use Average: print this frame with the roll's measurement; right-click turns every average on or off."),
+            toggle_all=True,
         )
-        self.use_color_avg_btn = self._small_toggle(
-            "mdi6.palette-outline",
-            tr("Color"),
-            conf.use_color_average,
-            tr("Use the roll's average color balance, with black and white points still per frame."),
+        self.use_luma_avg_btn = self.use_avg_btn.add_toggle(
+            tr("Luma"), tr("Use the roll's average black and white points, with color still per frame.")
         )
-        self.use_cast_avg_btn = self._small_toggle(
-            "mdi6.scale-balance",
-            tr("Cast"),
-            conf.use_cast_average,
-            tr("Color negatives only: use the roll's gray balance for Cast Removal, so frames under one light match."),
+        self.use_color_avg_btn = self.use_avg_btn.add_toggle(
+            tr("Color"), tr("Use the roll's average color balance, with black and white points still per frame.")
         )
-        avg_row.addWidget(self.use_luma_avg_btn)
-        avg_row.addWidget(self.use_color_avg_btn)
-        avg_row.addWidget(self.use_cast_avg_btn)
-        baseline_col.addLayout(avg_row)
+        self.use_cast_avg_btn = self.use_avg_btn.add_toggle(
+            tr("Cast"), tr("Color negatives only: use the roll's gray balance for Cast Removal, so frames under one light match.")
+        )
+        self.use_luma_avg_btn.setChecked(conf.use_luma_average)
+        self.use_color_avg_btn.setChecked(conf.use_color_average)
+        self.use_cast_avg_btn.setChecked(conf.use_cast_average)
+        baseline_col.addWidget(self.use_avg_btn)
 
         # Render exposure for a merged bracket, continuous rather than snapped to the frames that
         # happen to have been shot. The menu still offers those and writes a frame name; this
@@ -272,6 +269,7 @@ class ProcessSidebar(BaseSidebar):
         self.use_luma_avg_btn.toggled.connect(self._on_use_luma_average_toggled)
         self.use_color_avg_btn.toggled.connect(self._on_use_color_average_toggled)
         self.use_cast_avg_btn.toggled.connect(self._on_use_cast_average_toggled)
+        self.use_avg_btn.toggledAll.connect(self._on_use_all_averages)
 
         self.white_point_slider.valueChanged.connect(lambda v: self._on_white_point_changed(v, persist=False))
         self.white_point_slider.valueCommitted.connect(lambda v: self._on_white_point_changed(v, persist=True))
@@ -317,6 +315,14 @@ class ProcessSidebar(BaseSidebar):
     def _on_use_cast_average_toggled(self, checked: bool) -> None:
         self.controller.set_roll_average(use_cast_average=checked)
 
+    def _on_use_all_averages(self, checked: bool) -> None:
+        fields = {
+            self.use_luma_avg_btn: "use_luma_average",
+            self.use_color_avg_btn: "use_color_average",
+            self.use_cast_avg_btn: "use_cast_average",
+        }
+        self.controller.set_roll_average(**{f: checked for a, f in fields.items() if a.isVisible() and a.isEnabled()})
+
     def _toggle_roll_axis(self, **axis: bool) -> None:
         self.controller.set_roll_average(**axis)
 
@@ -332,6 +338,12 @@ class ProcessSidebar(BaseSidebar):
             **invalidate_local_bounds(self.state.config.process),
         )
         self.controller.analysis_buffer_preview_requested.emit(val)
+
+    def _sync_use_avg_label(self) -> None:
+        """The button names the averages in use, so the card reads without opening the menu."""
+        on = [a.text() for a in (self.use_luma_avg_btn, self.use_color_avg_btn, self.use_cast_avg_btn) if a.isChecked() and a.isVisible()]
+        self.use_avg_btn.setText(icon_text(", ".join(on) if on else tr("Off")))
+        self.use_avg_btn.refresh()
 
     def _cast_baseline_ready(self, conf) -> bool:
         """A neutral axis on this frame, or on the baseline its Cast toggle would take."""
@@ -411,6 +423,7 @@ class ProcessSidebar(BaseSidebar):
             self.use_luma_avg_btn.setChecked(conf.use_luma_average)
             self.use_color_avg_btn.setChecked(conf.use_color_average)
             self.use_cast_avg_btn.setChecked(conf.use_cast_average)
+            self._sync_use_avg_label()
 
             # Transparency transfer: the stretch is a fixed window anchored to the decoder's white
             # level, so nothing that tunes a measured stretch has anything to act on.
@@ -456,8 +469,7 @@ class ProcessSidebar(BaseSidebar):
                 self.analysis_region_btn,
                 self.film_base_btn,
                 self.avg_header,
-                self.use_luma_avg_btn,
-                self.use_color_avg_btn,
+                self.use_avg_btn,
                 self.clip_fold.content,
                 self.lock_bounds_btn,
                 self.reanalyze_frame_btn,
@@ -470,6 +482,7 @@ class ProcessSidebar(BaseSidebar):
             self.use_luma_avg_btn.setEnabled(has_roll or conf.use_luma_average)
             self.use_color_avg_btn.setEnabled(has_roll or conf.use_color_average)
             self.use_cast_avg_btn.setEnabled((has_roll and self._cast_baseline_ready(conf)) or conf.use_cast_average)
+            self._sync_use_avg_label()
             self._update_baseline_source_hint(conf, transfer)
 
             idx = self._channel_index()
