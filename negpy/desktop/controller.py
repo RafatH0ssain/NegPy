@@ -557,6 +557,7 @@ class AppController(QObject):
     preview_load_requested = pyqtSignal(PreviewLoadTask)
     prefetch_load_requested = pyqtSignal(PreviewLoadTask)
     normalization_requested = pyqtSignal(NormalizationTask)
+    background_normalization_requested = pyqtSignal(NormalizationTask)
     batch_autocrop_requested = pyqtSignal(BatchAutoCropTask)
     thumbnail_render_requested = pyqtSignal(ThumbnailRenderTask)
     thumbnail_refresh_state_changed = pyqtSignal(bool)  # a background refresh started/stopped running
@@ -740,6 +741,12 @@ class AppController(QObject):
         self._active_batch_token: Optional[int] = None
         self._normalization_scope: Optional[str] = None
         self._scene_queue: List[str] = []
+        # (roll id, frame hashes) of the running background Roll Analysis.
+        self._background_baseline: Optional[Tuple[str, Tuple[str, ...]]] = None
+        self._background_baseline_timer = QTimer(self)
+        self._background_baseline_timer.setSingleShot(True)
+        self._background_baseline_timer.setInterval(2000)
+        self._background_baseline_timer.timeout.connect(self._run_background_baseline)
         # True while a hot-folder-triggered discovery owns the batch lane. Thumbnail
         # loading is an independent background queue and never owns this state.
         self._hot_folder_sequence_active = False
@@ -824,6 +831,8 @@ class AppController(QObject):
         self.norm_thread = QThread()
         self.norm_worker = NormalizationWorker(self.preview_service)
         self.norm_worker.moveToThread(self.norm_thread)
+        self.bg_norm_worker = NormalizationWorker(self.preview_service)
+        self.bg_norm_worker.moveToThread(self.norm_thread)
         self.batch_autocrop_worker = BatchAutoCropWorker(self.batch_autocrop_preview_service)
         self.batch_autocrop_worker.moveToThread(self.norm_thread)
         self.thumbnail_render_worker = ThumbnailRenderWorker(self.thumbnail_render_preview_service, self.preview_service)
@@ -1124,6 +1133,10 @@ class AppController(QObject):
         self.norm_worker.detected.connect(self._on_scenes_detected)
         self.norm_worker.cancelled.connect(self._on_normalization_cancelled)
         self.norm_worker.error.connect(self._on_normalization_error)
+        self.background_normalization_requested.connect(self.bg_norm_worker.process)
+        self.bg_norm_worker.finished.connect(self._on_background_baseline)
+        self.bg_norm_worker.cancelled.connect(self._on_background_baseline_ended)
+        self.bg_norm_worker.error.connect(self._on_background_baseline_ended)
 
         self.batch_autocrop_requested.connect(self.batch_autocrop_worker.process)
         self.batch_autocrop_worker.progress.connect(self._on_batch_autocrop_progress)
@@ -1608,6 +1621,8 @@ class AppController(QObject):
             return None
         if owner in _NORM_THREAD_BATCH_OWNERS:
             self._preempt_background_thumbnail_refresh()
+        if self._background_baseline is not None:
+            self.bg_norm_worker.cancel()
         self._batch_serial += 1
         self._active_batch = owner
         self._active_batch_title = title
@@ -1658,6 +1673,7 @@ class AppController(QObject):
         self.batch_finished.emit()
         if self._pending_asset_discoveries and not self._discovery_running:
             QTimer.singleShot(0, self._start_next_asset_discovery)
+        self._background_baseline_timer.start()
         return True
 
     def _on_batch_progress(self, current: int, total: int, name: str) -> None:
@@ -2716,6 +2732,7 @@ class AppController(QObject):
         Adds discovered assets to the session and starts thumbnail generation.
         """
         remember_split_scans(self.session.repo, {base_hash(a["hash"]) for a in valid_assets if a.get("half")})
+        self._background_baseline_timer.start()
         self._mark_diptychs(valid_assets)
         self._apply_roll_forks(valid_assets)
         promote_sidecars(self.session.repo, valid_assets)
@@ -5968,7 +5985,10 @@ class AppController(QObject):
 
         if scene_id is None:
             if roll_id is not None:
-                rolls.set_roll_normalization(self.session.repo, roll_id, locked_floors, locked_ceils, outliers=outliers, axis=axis)
+                known = tuple(f["hash"] for f in targets)
+                rolls.set_roll_normalization(
+                    self.session.repo, roll_id, locked_floors, locked_ceils, outliers=outliers, axis=axis, frames=known
+                )
             message = tr("Roll analysis complete")
         else:
             rolls.set_scene_normalization(self.session.repo, roll_id, scene_id, locked_floors, locked_ceils, outliers=outliers, axis=axis)
@@ -6008,6 +6028,101 @@ class AppController(QObject):
         self._end_batch("normalization")
         self.status_progress_requested.emit(0, 0)
         self.request_render()
+
+    def _run_background_baseline(self) -> None:
+        """Measures the roll baseline without a dialog or progress bar, and without turning any
+        frame's Use Average on. Runs while a frame outside a scene is missing from the saved
+        baseline; a baseline saved before frames were recorded stays until Roll Analysis runs."""
+        roll_id = self.state.active_roll_id
+        if roll_id is None or self._active_batch is not None or self._background_baseline is not None:
+            return
+        frames = [f for f in self._normalization_targets(None) if not self._waits_for_auto_crop(f)]
+        hashes = tuple(f["hash"] for f in frames)
+        if len(frames) < 2:
+            return
+        saved = rolls.roll_normalization(self.session.repo, roll_id)
+        if saved and (saved["frames"] is None or set(hashes) <= set(saved["frames"])):
+            return
+        self._background_baseline = (roll_id, hashes)
+        self.bg_norm_worker.arm()
+        self.background_normalization_requested.emit(
+            NormalizationTask(
+                frames=[NormalizationInput(file_info=f, config=self._config_for_batch_asset(f)) for f in frames],
+                workspace_color_space=self.state.workspace_color_space,
+                override_analysis_buffer=None,
+                override_luma_range_clip=None,
+                override_color_range_clip=None,
+                background=True,
+            )
+        )
+        self.config_updated.emit()
+
+    def measuring_roll_baseline(self) -> bool:
+        return self._background_baseline is not None
+
+    def _on_background_baseline(self, floors: tuple, ceils: tuple, outlier_hashes: list, axis: Optional[tuple] = None) -> None:
+        """Saves the measured baseline on the roll and moves the frames that already ride it."""
+        if self._background_baseline is None:
+            return
+        roll_id, hashes = self._background_baseline
+        rolls.set_roll_normalization(self.session.repo, roll_id, floors, ceils, outliers=tuple(outlier_hashes), axis=axis, frames=hashes)
+        if roll_id == self.state.active_roll_id:
+            self._refresh_riding_frames(roll_id, floors, ceils, axis)
+        self._on_background_baseline_ended()
+        # Frames that arrived during the run.
+        self._background_baseline_timer.start()
+
+    def _on_background_baseline_ended(self, *_args) -> None:
+        self._background_baseline = None
+        self.config_updated.emit()
+
+    def _refresh_riding_frames(self, roll_id: str, floors: tuple, ceils: tuple, axis: Optional[tuple]) -> None:
+        """A frame outside a scene that rides Use Average on the roll baseline, or on none yet,
+        takes the new numbers; its Use Average choices stay."""
+        source = f"roll:{roll_id}"
+
+        def rides(p) -> bool:
+            if p.lock_bounds or not (p.use_luma_average or p.use_color_average or p.use_cast_average):
+                return False
+            return p.baseline_source == source or not (p.baseline_source or p.is_locked_initialized)
+
+        values = {"locked_floors": floors, "locked_ceils": ceils, "locked_neutral_axis": axis, "baseline_source": source}
+        current = self.state.current_file_hash
+        changed: List[str] = []
+        for f in self._normalization_targets(None):
+            if f["hash"] == current:
+                continue
+            p = self.session.repo.load_file_settings(f["hash"]) or self.session.config_for_asset(f)
+            if not rides(p.process):
+                continue
+            new_p = replace(p, process=replace(p.process, **values))
+            self.session.push_external_history(f["hash"], p, new_p)
+            self.session.repo.save_file_settings(f["hash"], new_p, file_path=f["path"])
+            changed.append(f["hash"])
+        if changed:
+            self.session.frames_edited_offscreen.emit(changed)
+        in_targets = any(f["hash"] == current for f in self._normalization_targets(None))
+        if in_targets and rides(self.state.config.process):
+            self.session.update_config(replace(self.state.config, process=replace(self.state.config.process, **values)), persist=True)
+            self.request_render()
+
+    def set_roll_average(self, **axis: bool) -> None:
+        """Use Average on the active frame alone. An axis turned on takes the current scene or
+        roll baseline, unless the frame carries one taken from another frame."""
+        process = self.state.config.process
+        changes: dict = dict(axis)
+        if "use_luma_average" in axis or "use_color_average" in axis:
+            # The other axis re-derives per frame; roll_name drops since a picked baseline no longer applies whole.
+            changes.update(roll_name=None, **invalidate_local_bounds(process))
+        kind = process.baseline_source.partition(":")[0]
+        if any(axis.values()) and not process.lock_bounds and kind in ("", "roll", "scene") and self.state.current_file_hash:
+            found = rolls.frame_saved_baseline(self.session.repo, self.state.active_roll_id, self.state.current_file_hash)
+            if found is not None:
+                saved, source = found
+                changes.update(
+                    locked_floors=saved["floors"], locked_ceils=saved["ceils"], locked_neutral_axis=saved["axis"], baseline_source=source
+                )
+        self.set_roll_default("baseline", **changes)
 
     def request_reset_roll(self) -> None:
         """Reset every visible frame to its own bare defaults -- Reset Settings, applied
@@ -9833,6 +9948,7 @@ class AppController(QObject):
         self.thumbnail_render_worker.cancel(self._thumbnail_render_generation)
         if self.norm_thread.isRunning():
             self.norm_worker.cancel()
+            self.bg_norm_worker.cancel()
             self.norm_thread.quit()
             self.norm_thread.wait()
         if self.discovery_thread.isRunning():

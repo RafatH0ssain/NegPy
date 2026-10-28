@@ -3820,7 +3820,9 @@ class TestPresetExportSelected(unittest.TestCase):
         with patch.object(rolls, "set_roll_normalization") as mock_set:
             self.controller._on_normalization_finished((0.1, 0.1, 0.1), (0.9, 0.9, 0.9), [])
 
-        mock_set.assert_called_once_with(self.mock_session_manager.repo, "roll-1", (0.1, 0.1, 0.1), (0.9, 0.9, 0.9), outliers=(), axis=None)
+        mock_set.assert_called_once_with(
+            self.mock_session_manager.repo, "roll-1", (0.1, 0.1, 0.1), (0.9, 0.9, 0.9), outliers=(), axis=None, frames=("h1", "h2", "h3")
+        )
 
     def test_outlier_keeps_its_own_bounds(self):
         self.mock_session_manager.state.active_roll_id = "roll-1"
@@ -3854,6 +3856,97 @@ class TestPresetExportSelected(unittest.TestCase):
         self.assertTrue(saved["h3"].use_cast_average)
         self.assertEqual(saved["h3"].locked_neutral_axis, axis)
         self.assertEqual(mock_set.call_args.kwargs["axis"], axis)
+
+    def _capture_background_runs(self) -> list:
+        self.controller.background_normalization_requested.disconnect()
+        tasks: list = []
+        self.controller.background_normalization_requested.connect(tasks.append)
+        self.controller._waits_for_auto_crop = MagicMock(return_value=False)
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.mock_session_manager.config_for_asset.return_value = WorkspaceConfig()
+        return tasks
+
+    def test_background_run_measures_a_new_frame_quietly(self):
+        tasks = self._capture_background_runs()
+        self.controller._waits_for_auto_crop.side_effect = lambda f: f["hash"] == "h3"
+
+        with patch.object(rolls, "roll_normalization", return_value={"frames": ("h1",)}):
+            self.controller._run_background_baseline()
+
+        (task,) = tasks
+        self.assertTrue(task.background)
+        self.assertIsNone(task.override_luma_range_clip)
+        self.assertEqual([f.file_info["hash"] for f in task.frames], ["h1", "h2"])
+        self.assertIsNone(self.controller._active_batch)
+        self.assertTrue(self.controller.measuring_roll_baseline())
+
+    def test_background_run_skips_a_roll_whose_baseline_knows_every_frame(self):
+        tasks = self._capture_background_runs()
+        for saved in ({"frames": ("h1", "h2", "h3", "h4")}, {"frames": None}):
+            with patch.object(rolls, "roll_normalization", return_value=saved):
+                self.controller._run_background_baseline()
+        self.assertEqual(tasks, [])
+
+    def test_background_baseline_is_saved_and_turns_no_average_on(self):
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.mock_session_manager.config_for_asset.return_value = WorkspaceConfig()
+        self.controller._background_baseline = ("roll-1", ("h1", "h2", "h3"))
+
+        with patch.object(rolls, "set_roll_normalization") as mock_set:
+            self.controller._on_background_baseline((0.1,) * 3, (0.9,) * 3, ["h1"], None)
+
+        mock_set.assert_called_once_with(
+            self.mock_session_manager.repo, "roll-1", (0.1,) * 3, (0.9,) * 3, outliers=("h1",), axis=None, frames=("h1", "h2", "h3")
+        )
+        self.mock_session_manager.repo.save_file_settings.assert_not_called()
+        self.mock_session_manager.update_config.assert_not_called()
+        self.assertFalse(self.controller.measuring_roll_baseline())
+
+    def test_background_baseline_moves_a_frame_riding_the_roll(self):
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.mock_session_manager.config_for_asset.return_value = WorkspaceConfig()
+        base = WorkspaceConfig().process
+        riding = WorkspaceConfig(
+            process=replace(base, use_luma_average=True, locked_floors=(0.2,) * 3, locked_ceils=(0.8,) * 3, baseline_source="roll:roll-1")
+        )
+        self.mock_session_manager.repo.load_file_settings.side_effect = lambda h: riding if h == "h1" else None
+        self.controller._background_baseline = ("roll-1", ("h1", "h2", "h3"))
+
+        with patch.object(rolls, "set_roll_normalization"):
+            self.controller._on_background_baseline((0.1,) * 3, (0.9,) * 3, [], None)
+
+        saved = {c.args[0]: c.args[1].process for c in self.mock_session_manager.repo.save_file_settings.call_args_list}
+        self.assertEqual(list(saved), ["h1"])
+        self.assertEqual(saved["h1"].locked_floors, (0.1,) * 3)
+        self.assertTrue(saved["h1"].use_luma_average)
+        self.assertFalse(saved["h1"].use_color_average)
+
+    def test_turning_an_average_on_takes_the_saved_baseline(self):
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.controller.set_roll_default = MagicMock()
+        found = ({"floors": (0.1,) * 3, "ceils": (0.9,) * 3, "axis": None}, "roll:roll-1")
+
+        with patch.object(rolls, "frame_saved_baseline", return_value=found):
+            self.controller.set_roll_average(use_luma_average=True)
+
+        args, kwargs = self.controller.set_roll_default.call_args
+        self.assertEqual(args, ("baseline",))
+        self.assertTrue(kwargs["use_luma_average"])
+        self.assertIsNone(kwargs["roll_name"])
+        self.assertEqual(kwargs["locked_floors"], (0.1,) * 3)
+        self.assertEqual(kwargs["baseline_source"], "roll:roll-1")
+
+    def test_turning_an_average_on_keeps_a_baseline_taken_from_a_frame(self):
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        cfg = self.mock_session_manager.state.config
+        self.mock_session_manager.state.config = replace(cfg, process=replace(cfg.process, baseline_source="frame:a.tif"))
+        self.controller.set_roll_default = MagicMock()
+
+        with patch.object(rolls, "frame_saved_baseline") as mock_found:
+            self.controller.set_roll_average(use_luma_average=True)
+
+        mock_found.assert_not_called()
+        self.assertNotIn("locked_floors", self.controller.set_roll_default.call_args.kwargs)
 
     def test_no_pooled_axis_leaves_cast_average_off(self):
         self.mock_session_manager.repo.load_file_settings.return_value = None

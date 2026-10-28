@@ -541,12 +541,12 @@ A **slide** needs no inversion: the tone controls shape the picture directly. Au
 <!-- panel:baseline -->
 ### 10.6 Roll Analysis
 
-Measures the whole roll once and shares the result, so the frames of one film print alike. With no roll open, the card is grayed out: open or save a roll first.
+Measures the whole roll once and shares the result, so the frames of one film print alike. NegPy measures the roll on its own when you open it and when new frames arrive, but no frame uses that baseline until you turn on an average. With no roll open, the card is grayed out: open or save a roll first.
 
-*   **Reanalyze**: measures every loaded frame (except scene and locked frames) and saves the average as the roll's baseline. Frames very different from the rest keep their own. It first crops the frames that wait for Auto Crop.
+*   **Reanalyze**: measures every loaded frame (except scene and locked frames) saves the average as the roll's baseline and turns the averages on for those frames. Frames very different from the rest keep their own. It first crops the frames that wait for Auto Crop.
 *   **Use This Frame**: makes this frame's measurement the roll's baseline.
 *   **Use average**: **Luma** uses the roll's black and white points, **Color** the roll's color balance, and **Cast** (color negatives) the roll's gray balance for Cast Removal. With Cast on, a frame shot under a different light keeps some of that light, as on a Frontier print. A magenta cast stays, a warm or green cast stays in part, and a blue cast goes. With Luma and Color on, the roll prints evenly; with both off, each frame is measured on its own.
-*   **Baseline**: says where the baseline came from (roll, scene or frame). It warns when there is none or when it is out of date.
+*   **Baseline**: says where the baseline came from (roll, scene or frame). It warns when there is none, when it is out of date, or when this frame's color is far from the average.
 *   **Rolls**: pick another roll's saved baseline. A ticked roll has one.
 *   **Scenes**: groups of frames with their own baseline, such as one subject under one light ([Scenes](#scenes)). **Analyze** measures the scene, **Select** selects its frames and **Delete** removes the group.
 *   **Detect Scenes**: finds the groups of frames under another light than the roll, in any frame order, and shows them on the Light Table. Each group waits under **Found**. To change a group, drag frames onto another group, or onto a frame with no scene to leave them out; right-click › **Scene** does the same. Give it a name, then **Accept** it as a scene with its own baseline, or **Discard** it.

@@ -369,15 +369,15 @@ Um ein Negativ in ein Positiv umzuwandeln, misst NegPy die dunkelsten und hellst
 
 Ein **Dia** braucht keine Umkehrung: Die Tonwertregler formen das Bild direkt. Auto-Dichte und Auto-Gradation sind aus. Schalte sie für ein verblasstes Dia ein. In Lightroom-Begriffen ist Belichtung die Abzugsdichte (niedriger ist heller), Kontrast die ISO-R-Gradation, und Schatten und Lichter sind die Dichte von Schatten und Lichtern.
 
-<!-- panel:baseline src:7c689a6d -->
+<!-- panel:baseline src:09a40bc9 -->
 ### 10.6 Rollenanalyse
 
-Misst die ganze Rolle einmal und teilt das Ergebnis, damit die Bilder eines Films gleich abgezogen werden. Ohne geöffnete Rolle ist die Karte ausgegraut: Öffne oder speichere zuerst eine Rolle.
+Misst die ganze Rolle einmal und teilt das Ergebnis, damit die Bilder eines Films gleich abgezogen werden. NegPy misst die Rolle selbst, wenn du sie öffnest und wenn neue Bilder dazukommen. Kein Bild nutzt diese Basislinie, bis du einen Mittelwert einschaltest. Ohne geöffnete Rolle ist die Karte ausgegraut: Öffne oder speichere zuerst eine Rolle.
 
-*   **Neu analysieren**: misst jedes geladene Bild (außer Szenen- und gesperrte Bilder) und speichert den Durchschnitt als Basislinie der Rolle. Bilder, die stark von den anderen abweichen, behalten ihre eigene. Zuerst werden die Bilder zugeschnitten, die auf den Auto-Zuschnitt warten.
+*   **Neu analysieren**: misst jedes geladene Bild (außer Szenen- und gesperrte Bilder) speichert den Durchschnitt als Basislinie der Rolle und schaltet die Mittelwerte für diese Bilder ein. Bilder, die stark von den anderen abweichen, behalten ihre eigene. Zuerst werden die Bilder zugeschnitten, die auf den Auto-Zuschnitt warten.
 *   **Dieses Bild verwenden**: macht die Messung dieses Bildes zur Basislinie der Rolle.
 *   **Mittelwert verwenden**: **Luma** nutzt Schwarz- und Weißpunkt der Rolle, **Farbe** die Farbbalance der Rolle und **Farbstich** (Farbnegative) die Graubalance der Rolle für die Farbstichentfernung. Bei aktivem Farbstich behält ein Bild unter anderem Licht etwas von diesem Licht, wie bei einem Frontier-Abzug. Ein Magenta-Stich bleibt, ein warmer oder grüner Stich bleibt teilweise, und ein blauer Stich verschwindet. Mit Luma und Farbe wird die Rolle gleichmäßig abgezogen. Sind beide aus, wird jedes Bild einzeln gemessen.
-*   **Basislinie**: zeigt, woher die Basislinie stammt (Rolle, Szene oder Bild). Sie warnt, wenn keine vorhanden oder sie veraltet ist.
+*   **Basislinie**: zeigt, woher die Basislinie stammt (Rolle, Szene oder Bild). Sie warnt, wenn keine vorhanden ist, wenn sie veraltet ist oder wenn die Farbe dieses Bildes stark vom Durchschnitt abweicht.
 *   **Rollen**: wähle die gespeicherte Basislinie einer anderen Rolle. Eine Rolle mit Häkchen hat eine.
 *   **Szenen**: Gruppen von Bildern mit eigener Basislinie, zum Beispiel ein Motiv unter einem Licht ([Szenen](#scenes)). **Analysieren** misst die Szene, **Auswählen** wählt ihre Bilder aus und **Löschen** entfernt die Gruppe.
 *   **Szenen erkennen**: findet die Gruppen von Bildern unter anderem Licht als die Rolle, in beliebiger Bildreihenfolge, und zeigt sie auf dem Leuchttisch. Jede Gruppe wartet unter **Gefunden**. Um eine Gruppe zu ändern, ziehe Bilder auf eine andere Gruppe oder auf ein Bild ohne Szene, um sie auszuschließen. Rechtsklick › **Szene** macht dasselbe. Gib ihr einen Namen und **Übernehme** sie als Szene mit eigener Basislinie, oder **Verwirf** sie.

@@ -20,7 +20,7 @@ import time
 import uuid
 from dataclasses import replace
 from fnmatch import fnmatchcase
-from typing import TYPE_CHECKING, Any, Callable, Collection, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Collection, Dict, List, Optional, Sequence, Tuple
 
 from negpy.features.exposure.normalization import BOUNDS_VERSION
 from negpy.features.metadata.models import GEAR_FIELDS, PROCESS_FIELDS, SCANNING_FIELDS
@@ -934,7 +934,8 @@ def move_section_push_fields(repo: Any, section_key: str, to_key: str, fields: C
 
 def roll_normalization(repo: Any, roll_id: str) -> Optional[Dict[str, Optional[tuple]]]:
     """The roll's saved Roll Analysis baseline (floors, ceils, cast, the pooled neutral
-    ``axis`` or None, and the hashes of the frames that keep their own bounds, ``outliers``), or None if it
+    ``axis`` or None, the hashes of the frames that keep their own bounds, ``outliers``, and of
+    the frames measured, ``frames``, None before frames were recorded), or None if it
     has never been analyzed. Unlike roll_defaults, this is written only by Batch
     Analysis itself -- a metering run over the roll's files, not a per-frame edit --
     so a frame's own Use Luma/Color Average axes borrow it directly rather than
@@ -949,6 +950,7 @@ def roll_normalization(repo: Any, roll_id: str) -> Optional[Dict[str, Optional[t
         "cast": tuple(saved["cast"]),
         "axis": _saved_axis(saved),
         "outliers": tuple(saved.get("outliers", ())),
+        "frames": tuple(saved["frames"]) if "frames" in saved else None,
     }
 
 
@@ -966,6 +968,7 @@ def set_roll_normalization(
     outliers: tuple = (),
     axis: Optional[tuple] = None,
     bounds_version: int = BOUNDS_VERSION,
+    frames: Optional[tuple] = None,
 ) -> None:
     """Records a Roll Analysis result as the roll's own baseline, overwriting
     whatever was there. No-op for an unknown roll id."""
@@ -981,6 +984,8 @@ def set_roll_normalization(
         "axis": axis,
         "bounds_version": bounds_version,
     }
+    if frames is not None:
+        entry["normalization"]["frames"] = list(frames)
     _write(repo, store)
 
 
@@ -1002,6 +1007,22 @@ def frame_baseline_stale(repo: Any, process: Any) -> bool:
             if scene:
                 return baseline_stale(scene.get("normalization"))
     return False
+
+
+def frame_is_outlier(repo: Any, process: Any, file_hash: str) -> bool:
+    """Whether the roll or scene baseline a frame rides measured it as far from the pooled color."""
+    kind, _, ref = process.baseline_source.partition(":")
+    saved: Optional[dict] = None
+    if kind == "roll":
+        entry = roll_for_id(repo, ref)
+        saved = entry.get("normalization") if entry else None
+    elif kind == "scene":
+        for entry in _view(repo).values():
+            scene = entry.get("scenes", {}).get(ref)
+            if scene:
+                saved = scene.get("normalization")
+                break
+    return bool(saved) and bool({file_hash, unforked_hash(file_hash)} & set(saved.get("outliers", ())))
 
 
 def roll_film_base(repo: Any, roll_id: Optional[str]) -> Optional[tuple]:
@@ -1157,11 +1178,10 @@ def resolve_roll_baseline(repo: Any, roll_id: str, file_hash: str, config: "Work
     process = config.process
     if process.lock_bounds or process.is_locked_initialized or not (process.use_luma_average or process.use_color_average):
         return config
-    scene = scene_by_hash(repo, roll_id).get(file_hash)
-    saved = scene_normalization(repo, roll_id, scene[1]) if scene else roll_normalization(repo, roll_id)
-    if not saved:
+    found = frame_saved_baseline(repo, roll_id, file_hash)
+    if found is None:
         return config
-    source = f"scene:{scene[1]}" if scene else f"roll:{roll_id}"
+    saved, source = found
     return replace(
         config,
         process=replace(
@@ -1172,6 +1192,18 @@ def resolve_roll_baseline(repo: Any, roll_id: str, file_hash: str, config: "Work
             baseline_source=source,
         ),
     )
+
+
+def frame_saved_baseline(repo: Any, roll_id: Optional[str], file_hash: str) -> Optional[Tuple[dict, str]]:
+    """The baseline a frame's Use Average reads, its scene's else its roll's, with its
+    ``baseline_source``; None before that baseline is measured."""
+    if roll_id is None:
+        return None
+    scene = scene_by_hash(repo, roll_id).get(unforked_hash(file_hash))
+    saved = scene_normalization(repo, roll_id, scene[1]) if scene else roll_normalization(repo, roll_id)
+    if not saved:
+        return None
+    return saved, f"scene:{scene[1]}" if scene else f"roll:{roll_id}"
 
 
 def baseline_label(repo: Any, process: Any) -> str:

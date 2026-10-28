@@ -187,24 +187,15 @@ def test_average_toggles_hide_on_the_transparency_transfer(qapp):
 
 
 def test_use_luma_average_toggle_reaches_the_controller(qapp):
-    """Goes through set_roll_default on the Roll Analysis card -- flipping it locks that
-    card to this frame, and drops roll_name since a single picked baseline no longer
-    applies."""
     controller, sidebar = _sidebar()
     sidebar.use_luma_avg_btn.setChecked(True)
-    args, kwargs = controller.set_roll_default.call_args
-    assert args[0] == "baseline"
-    assert kwargs["use_luma_average"] is True
-    assert kwargs["roll_name"] is None
+    controller.set_roll_average.assert_called_with(use_luma_average=True)
 
 
 def test_use_color_average_toggle_reaches_the_controller(qapp):
     controller, sidebar = _sidebar()
     sidebar.use_color_avg_btn.setChecked(True)
-    args, kwargs = controller.set_roll_default.call_args
-    assert args[0] == "baseline"
-    assert kwargs["use_color_average"] is True
-    assert kwargs["roll_name"] is None
+    controller.set_roll_average.assert_called_with(use_color_average=True)
 
 
 def test_white_black_point_retarget_and_sync(qapp):
@@ -375,6 +366,36 @@ def test_baseline_hint_flags_a_roll_baseline_from_an_older_analysis(qapp):
         sidebar.sync_ui()
     assert sidebar.baseline_source_hint.text() == "Baseline: Roll “Tri-X”, from an older analysis"
     assert sidebar.baseline_source_hint.property("hint") == "warning"
+
+
+def test_baseline_hint_warns_on_an_outlier_riding_the_average(qapp):
+    from negpy.services.assets import rolls
+
+    controller, sidebar = _sidebar()
+    controller.state.current_file_hash = "h1"
+    cfg = controller.state.config
+    riding = dict(use_luma_average=True, locked_floors=(0.1, 0.1, 0.1), locked_ceils=(0.9, 0.9, 0.9), baseline_source="roll:r1")
+    saved = {"floors": [0.1] * 3, "ceils": [0.9] * 3, "bounds_version": rolls.BOUNDS_VERSION}
+
+    with patch.object(rolls, "roll_for_id", return_value={"name": "Tri-X", "normalization": {**saved, "outliers": ["h1"]}}):
+        controller.state.config = replace(cfg, process=replace(cfg.process, **riding))
+        sidebar.sync_ui()
+    assert "far from the average" in sidebar.baseline_source_hint.text()
+    assert sidebar.baseline_source_hint.property("hint") == "warning"
+
+    with patch.object(rolls, "roll_for_id", return_value={"name": "Tri-X", "normalization": {**saved, "outliers": ["h2"]}}):
+        sidebar.sync_ui()
+    assert sidebar.baseline_source_hint.text() == "Baseline: Roll “Tri-X”"
+    assert sidebar.baseline_source_hint.property("hint") == "muted"
+
+
+def test_baseline_hint_says_the_roll_is_being_measured(qapp):
+    controller, sidebar = _sidebar()
+    controller.measuring_roll_baseline.return_value = True
+    cfg = controller.state.config
+    controller.state.config = replace(cfg, process=replace(cfg.process, use_luma_average=True))
+    sidebar.sync_ui()
+    assert sidebar.baseline_source_hint.text() == "Measuring the roll baseline…"
 
 
 def test_the_clipping_hint_reads_as_the_analysis_row_does():

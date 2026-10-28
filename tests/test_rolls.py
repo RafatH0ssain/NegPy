@@ -58,6 +58,7 @@ from negpy.services.assets.rolls import (
     set_frame_override,
     set_roll_defaults,
     set_roll_normalization,
+    frame_is_outlier,
     unfork_edit,
     unforked_hash,
     virtual_rolls,
@@ -739,7 +740,32 @@ class TestRollNormalization:
 
         data = roll_normalization(repo, roll_id)
 
-        assert data == {"floors": (0.1, 0.1, 0.1), "ceils": (0.9, 0.9, 0.9), "cast": (0.01, 0.0, -0.01), "axis": None, "outliers": ()}
+        assert data == {
+            "floors": (0.1, 0.1, 0.1),
+            "ceils": (0.9, 0.9, 0.9),
+            "cast": (0.01, 0.0, -0.01),
+            "axis": None,
+            "outliers": (),
+            "frames": None,
+        }
+
+    def test_records_the_measured_frames(self):
+        repo = _repo()
+        roll_id = create_virtual_roll(repo, "Portra", [])
+        set_roll_normalization(repo, roll_id, (0.1,) * 3, (0.9,) * 3, frames=("h1", "h2"))
+
+        assert roll_normalization(repo, roll_id)["frames"] == ("h1", "h2")
+
+    def test_an_outlier_riding_the_roll_baseline_reads_as_one(self):
+        repo = _repo()
+        roll_id = create_virtual_roll(repo, "Portra", [])
+        set_roll_normalization(repo, roll_id, (0.1,) * 3, (0.9,) * 3, outliers=("h1",))
+        process = ProcessConfig(baseline_source=f"roll:{roll_id}")
+
+        assert frame_is_outlier(repo, process, "h1")
+        assert frame_is_outlier(repo, process, "h1#roll:x")
+        assert not frame_is_outlier(repo, process, "h2")
+        assert not frame_is_outlier(repo, ProcessConfig(baseline_source="frame:a.tif"), "h1")
 
     def test_defaults_cast_to_zero(self):
         repo = _repo()
