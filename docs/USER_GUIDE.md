@@ -543,7 +543,7 @@ A **slide** needs no inversion: the tone controls shape the picture directly. Au
 <!-- panel:baseline -->
 ### 10.6 Roll Analysis
 
-Measures the whole roll once and shares the result, so the frames of one film print alike. NegPy measures the roll on its own when you open it and when new frames arrive, but no frame uses that baseline until you turn on an average. With no roll open, the card is grayed out: open or save a roll first.
+Measures the whole roll once and shares the result, so the frames of one film print alike. NegPy measures the roll and each scene on its own, as frames arrive, but no frame uses a baseline until you turn on an average. With no roll open, the card is grayed out: open or save a roll first.
 
 *   **Reanalyze**: measures every loaded frame (except scene and locked frames) saves the average as the roll's baseline and turns the averages on for those frames. Frames very different from the rest keep their own. It first crops the frames that wait for Auto Crop.
 *   **Use This Frame**: makes this frame's measurement the roll's baseline.

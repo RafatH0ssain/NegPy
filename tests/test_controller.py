@@ -3878,7 +3878,7 @@ class TestPresetExportSelected(unittest.TestCase):
         self.assertIsNone(task.override_luma_range_clip)
         self.assertEqual([f.file_info["hash"] for f in task.frames], ["h1", "h2"])
         self.assertIsNone(self.controller._active_batch)
-        self.assertTrue(self.controller.measuring_roll_baseline())
+        self.assertTrue(self.controller.measuring_baseline())
 
     def test_background_run_skips_a_roll_whose_baseline_knows_every_frame(self):
         tasks = self._capture_background_runs()
@@ -3890,7 +3890,7 @@ class TestPresetExportSelected(unittest.TestCase):
     def test_background_baseline_is_saved_and_turns_no_average_on(self):
         self.mock_session_manager.state.active_roll_id = "roll-1"
         self.mock_session_manager.config_for_asset.return_value = WorkspaceConfig()
-        self.controller._background_baseline = ("roll-1", ("h1", "h2", "h3"))
+        self.controller._background_baseline = ("roll-1", None, ("h1", "h2", "h3"))
 
         with patch.object(rolls, "set_roll_normalization") as mock_set:
             self.controller._on_background_baseline((0.1,) * 3, (0.9,) * 3, ["h1"], None)
@@ -3900,7 +3900,7 @@ class TestPresetExportSelected(unittest.TestCase):
         )
         self.mock_session_manager.repo.save_file_settings.assert_not_called()
         self.mock_session_manager.update_config.assert_not_called()
-        self.assertFalse(self.controller.measuring_roll_baseline())
+        self.assertFalse(self.controller.measuring_baseline())
 
     def test_background_baseline_moves_a_frame_riding_the_roll(self):
         self.mock_session_manager.state.active_roll_id = "roll-1"
@@ -3910,7 +3910,7 @@ class TestPresetExportSelected(unittest.TestCase):
             process=replace(base, use_luma_average=True, locked_floors=(0.2,) * 3, locked_ceils=(0.8,) * 3, baseline_source="roll:roll-1")
         )
         self.mock_session_manager.repo.load_file_settings.side_effect = lambda h: riding if h == "h1" else None
-        self.controller._background_baseline = ("roll-1", ("h1", "h2", "h3"))
+        self.controller._background_baseline = ("roll-1", None, ("h1", "h2", "h3"))
 
         with patch.object(rolls, "set_roll_normalization"):
             self.controller._on_background_baseline((0.1,) * 3, (0.9,) * 3, [], None)
@@ -3920,6 +3920,47 @@ class TestPresetExportSelected(unittest.TestCase):
         self.assertEqual(saved["h1"].locked_floors, (0.1,) * 3)
         self.assertTrue(saved["h1"].use_luma_average)
         self.assertFalse(saved["h1"].use_color_average)
+
+    def test_background_run_measures_a_scene_once_the_roll_is_known(self):
+        tasks = self._capture_background_runs()
+        members = {"h2": (1, "s1", "Woods"), "h3": (1, "s1", "Woods")}
+
+        with (
+            patch.object(rolls, "scene_by_hash", return_value=members),
+            patch.object(rolls, "roll_scenes", return_value=[("s1", {"name": "Woods"})]),
+            patch.object(rolls, "roll_normalization", return_value={"frames": None}),
+            patch.object(rolls, "scene_normalization", return_value=None),
+        ):
+            self.controller._run_background_baseline()
+
+        (task,) = tasks
+        self.assertEqual([f.file_info["hash"] for f in task.frames], ["h2", "h3"])
+        self.assertEqual(self.controller._background_baseline, ("roll-1", "s1", ("h2", "h3")))
+
+    def test_background_scene_baseline_moves_only_the_frames_riding_that_scene(self):
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.mock_session_manager.config_for_asset.return_value = WorkspaceConfig()
+        base = WorkspaceConfig().process
+
+        def riding(source):
+            return WorkspaceConfig(
+                process=replace(base, use_luma_average=True, locked_floors=(0.2,) * 3, locked_ceils=(0.8,) * 3, baseline_source=source)
+            )
+
+        configs = {"h1": riding("roll:roll-1"), "h3": riding("scene:s1")}
+        self.mock_session_manager.repo.load_file_settings.side_effect = configs.get
+        self.controller._background_baseline = ("roll-1", "s1", ("h2", "h3"))
+
+        with (
+            patch.object(rolls, "scene_by_hash", return_value={"h3": (1, "s1", "Woods")}),
+            patch.object(rolls, "set_scene_normalization") as mock_scene,
+        ):
+            self.controller._on_background_baseline((0.1,) * 3, (0.9,) * 3, [], None)
+
+        self.assertEqual(mock_scene.call_args.kwargs["frames"], ("h2", "h3"))
+        saved = {c.args[0]: c.args[1].process for c in self.mock_session_manager.repo.save_file_settings.call_args_list}
+        self.assertEqual(list(saved), ["h3"])
+        self.assertEqual(saved["h3"].locked_floors, (0.1,) * 3)
 
     def test_turning_an_average_on_takes_the_saved_baseline(self):
         self.mock_session_manager.state.active_roll_id = "roll-1"
@@ -4082,7 +4123,7 @@ class TestPresetExportSelected(unittest.TestCase):
         self.assertEqual(saved["h1"].process.baseline_source, "scene:s1")
         mock_roll.assert_not_called()
         mock_scene.assert_called_once_with(
-            self.mock_session_manager.repo, "roll-1", "s1", (0.1, 0.1, 0.1), (0.9, 0.9, 0.9), outliers=(), axis=None
+            self.mock_session_manager.repo, "roll-1", "s1", (0.1, 0.1, 0.1), (0.9, 0.9, 0.9), outliers=(), axis=None, frames=("h1", "h3")
         )
         # h2, the active frame, is outside the scene, so its in-memory config is untouched.
         self.mock_session_manager.update_config.assert_not_called()

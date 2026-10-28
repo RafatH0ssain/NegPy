@@ -1120,8 +1120,11 @@ class ActionToolbar(QWidget):
                 on.append(action.text())
         self.average_axes.setText(icon_text(", ".join(on) if on else tr("Off")))
         self.average_axes.refresh()
-        outlier = self._average_outlier(state, self._saved_baseline(state))
-        self.average_hint.setText(tr("Far from the roll color") if outlier else "")
+        found = self._saved_baseline(state)
+        self._average_label.setText(rolls.source_label(self.session.repo, found[1]) if found else tr("Roll average"))
+        outlier = self._average_outlier(state, found)
+        scene = found is not None and found[1].startswith("scene:")
+        self.average_hint.setText((tr("Far from the scene color") if scene else tr("Far from the roll color")) if outlier else "")
         set_hint_kind(self.average_hint, "warning" if outlier else "muted")
         self.average_hint.setVisible(outlier)
 
@@ -1803,10 +1806,10 @@ class ActionToolbar(QWidget):
         self.average_menu.setIcon(qta.icon("mdi6.alert", color=THEME.warn_amber) if outlier else self._average_icon)
         if self.average_menu.isEnabled() or not printed:
             tip = tr("Use Average: print this frame with the roll's measurement; right-click turns every average on or off.")
-        elif state.active_roll_id and self.controller.measuring_roll_baseline() is True:
-            tip = tr("Measuring the roll baseline…")
+        elif state.active_roll_id and self.controller.measuring_baseline() is True:
+            tip = tr("Measuring the average…")
         else:
-            tip = tr("No roll baseline for this frame yet")
+            tip = tr("No average for this frame yet")
         self.average_menu.setToolTip(wrap_tooltip(tip))
 
     def _activate_layout(self) -> None:

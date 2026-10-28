@@ -2512,7 +2512,7 @@ class FileBrowser(QWidget):
         reanalyze = tr("Reanalyze {value}", value=count_of(n, "frame").title()) if on_selection else tr("Reanalyze Frame")
         menu.addAction(reanalyze).triggered.connect(lambda: self.controller.reanalyze_selection())
         if state.active_roll_id:
-            menu.addAction(tr("Use Roll Average")).triggered.connect(lambda: self.controller.set_selection_average(True))
+            menu.addAction(tr("Use Average")).triggered.connect(lambda: self.controller.set_selection_average(True))
             menu.addAction(tr("Use Own Measurement")).triggered.connect(lambda: self.controller.set_selection_average(False))
         if self.controller.thumbnail_refresh_running:
             menu.addAction(tr("Cancel Thumbnail Update")).triggered.connect(lambda: self.controller.cancel_thumbnail_refresh())

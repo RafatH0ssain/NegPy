@@ -1194,7 +1194,7 @@ def _average_toolbar(baseline):
     tb.session.state.config.process = process
     tb.session.state.active_roll_id = "r1"
     tb.session.state.current_file_hash = "h1"
-    tb.controller.measuring_roll_baseline.return_value = False
+    tb.controller.measuring_baseline.return_value = False
     with patch("negpy.desktop.view.canvas.toolbar.rolls.frame_saved_baseline", return_value=baseline):
         tb._sync_average_menu()
     return tb
@@ -1203,7 +1203,7 @@ def _average_toolbar(baseline):
 def test_the_bar_average_button_waits_for_a_roll_baseline(qapp):
     tb = _average_toolbar(None)
     assert not tb.average_menu.isEnabled()
-    assert "No roll baseline" in tb.average_menu.toolTip()
+    assert "No average" in tb.average_menu.toolTip()
 
 
 def test_the_bar_average_button_writes_one_axis_and_right_click_writes_all(qapp):

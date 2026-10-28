@@ -863,8 +863,11 @@ class TestScenes:
             "ceils": (0.7, 0.8, 0.9),
             "axis": axis,
             "outliers": ("a",),
+            "frames": None,
         }
         assert roll_normalization(repo, roll_id) is None
+        set_scene_normalization(repo, roll_id, sid, (0.1, 0.2, 0.3), (0.7, 0.8, 0.9), frames=("a",))
+        assert scene_normalization(repo, roll_id, sid)["frames"] == ("a",)
 
     def test_roll_record_keeps_its_outliers_and_an_old_record_has_none(self):
         repo, roll_id = self._roll()

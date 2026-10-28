@@ -416,11 +416,11 @@ def test_baseline_hint_warns_on_an_outlier_riding_the_average(qapp):
 
 def test_baseline_hint_says_the_roll_is_being_measured(qapp):
     controller, sidebar = _sidebar()
-    controller.measuring_roll_baseline.return_value = True
+    controller.measuring_baseline.return_value = True
     cfg = controller.state.config
     controller.state.config = replace(cfg, process=replace(cfg.process, use_luma_average=True))
     sidebar.sync_ui()
-    assert sidebar.baseline_source_hint.text() == "Measuring the roll baseline…"
+    assert sidebar.baseline_source_hint.text() == "Measuring the average…"
 
 
 def test_the_clipping_hint_reads_as_the_analysis_row_does():

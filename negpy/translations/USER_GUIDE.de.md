@@ -369,10 +369,10 @@ Um ein Negativ in ein Positiv umzuwandeln, misst NegPy die dunkelsten und hellst
 
 Ein **Dia** braucht keine Umkehrung: Die Tonwertregler formen das Bild direkt. Auto-Dichte und Auto-Gradation sind aus. Schalte sie für ein verblasstes Dia ein. In Lightroom-Begriffen ist Belichtung die Abzugsdichte (niedriger ist heller), Kontrast die ISO-R-Gradation, und Schatten und Lichter sind die Dichte von Schatten und Lichtern.
 
-<!-- panel:baseline src:bf331252 -->
+<!-- panel:baseline src:6dfb6dc2 -->
 ### 10.6 Rollenanalyse
 
-Misst die ganze Rolle einmal und teilt das Ergebnis, damit die Bilder eines Films gleich abgezogen werden. NegPy misst die Rolle selbst, wenn du sie öffnest und wenn neue Bilder dazukommen. Kein Bild nutzt diese Basislinie, bis du einen Mittelwert einschaltest. Ohne geöffnete Rolle ist die Karte ausgegraut: Öffne oder speichere zuerst eine Rolle.
+Misst die ganze Rolle einmal und teilt das Ergebnis, damit die Bilder eines Films gleich abgezogen werden. NegPy misst die Rolle und jede Szene selbst, sobald Bilder dazukommen. Kein Bild nutzt eine Basislinie, bis du einen Mittelwert einschaltest. Ohne geöffnete Rolle ist die Karte ausgegraut: Öffne oder speichere zuerst eine Rolle.
 
 *   **Neu analysieren**: misst jedes geladene Bild (außer Szenen- und gesperrte Bilder) speichert den Durchschnitt als Basislinie der Rolle und schaltet die Mittelwerte für diese Bilder ein. Bilder, die stark von den anderen abweichen, behalten ihre eigene. Zuerst werden die Bilder zugeschnitten, die auf den Auto-Zuschnitt warten.
 *   **Dieses Bild verwenden**: macht die Messung dieses Bildes zur Basislinie der Rolle.

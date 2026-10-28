@@ -1121,7 +1121,8 @@ def delete_scene(repo: Any, roll_id: str, scene_id: str) -> None:
 
 
 def scene_normalization(repo: Any, roll_id: str, scene_id: str) -> Optional[Dict[str, Optional[tuple]]]:
-    """The scene's saved Scene Analysis baseline (floors, ceils, axis, outliers), or None before one."""
+    """The scene's saved Scene Analysis baseline (floors, ceils, axis, outliers, and the ``frames``
+    measured, None before frames were recorded), or None before one."""
     saved = dict(roll_scenes(repo, roll_id)).get(scene_id, {}).get("normalization")
     if not saved:
         return None
@@ -1130,11 +1131,19 @@ def scene_normalization(repo: Any, roll_id: str, scene_id: str) -> Optional[Dict
         "ceils": tuple(saved["ceils"]),
         "axis": _saved_axis(saved),
         "outliers": tuple(saved.get("outliers", ())),
+        "frames": tuple(saved["frames"]) if "frames" in saved else None,
     }
 
 
 def set_scene_normalization(
-    repo: Any, roll_id: str, scene_id: str, floors: tuple, ceils: tuple, outliers: tuple = (), axis: Optional[tuple] = None
+    repo: Any,
+    roll_id: str,
+    scene_id: str,
+    floors: tuple,
+    ceils: tuple,
+    outliers: tuple = (),
+    axis: Optional[tuple] = None,
+    frames: Optional[tuple] = None,
 ) -> None:
     def edit(scenes: Dict[str, dict]) -> None:
         if scene_id in scenes:
@@ -1145,6 +1154,8 @@ def set_scene_normalization(
                 "axis": axis,
                 "bounds_version": BOUNDS_VERSION,
             }
+            if frames is not None:
+                saved["frames"] = list(frames)
             scenes[scene_id] = {**scenes[scene_id], "normalization": saved}
 
     _edit_scenes(repo, roll_id, edit)
@@ -1209,7 +1220,14 @@ def frame_saved_baseline(repo: Any, roll_id: Optional[str], file_hash: str) -> O
 def baseline_label(repo: Any, process: Any) -> str:
     """What a frame's locked baseline was taken from, for display: “Roll …”, “Scene …” or
     “Frame …”. A baseline saved before sources were recorded names its roll_name, if any."""
-    kind, _, ref = process.baseline_source.partition(":")
+    if not process.baseline_source:
+        return f"Roll “{process.roll_name}”" if process.roll_name else "a saved baseline"
+    return source_label(repo, process.baseline_source)
+
+
+def source_label(repo: Any, source: str) -> str:
+    """A ``baseline_source`` for display: “Roll …”, “Scene …” or “Frame …”."""
+    kind, _, ref = source.partition(":")
     if kind == "roll":
         entry = roll_for_id(repo, ref)
         return f"Roll “{entry['name']}”" if entry else "a deleted roll"
@@ -1221,4 +1239,4 @@ def baseline_label(repo: Any, process: Any) -> str:
         return "a deleted scene"
     if kind == "frame":
         return f"Frame “{ref}”"
-    return f"Roll “{process.roll_name}”" if process.roll_name else "a saved baseline"
+    return "a saved baseline"

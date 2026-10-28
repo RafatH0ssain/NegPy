@@ -374,9 +374,9 @@ class ProcessSidebar(BaseSidebar):
             else:
                 text = tr("Baseline: {value}", value=baseline)
             self.baseline_source_hint.setText(text)
-        elif self.controller.measuring_roll_baseline() is True:
+        elif self.controller.measuring_baseline() is True:
             set_hint_kind(self.baseline_source_hint, "muted")
-            self.baseline_source_hint.setText(tr("Measuring the roll baseline…"))
+            self.baseline_source_hint.setText(tr("Measuring the average…"))
         else:
             set_hint_kind(self.baseline_source_hint, "warning")
             self.baseline_source_hint.setText(tr("No baseline yet: this frame uses its own analysis until Roll Analysis runs"))

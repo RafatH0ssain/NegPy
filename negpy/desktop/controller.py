@@ -5998,7 +5998,10 @@ class AppController(QObject):
                 )
             message = tr("Roll analysis complete")
         else:
-            rolls.set_scene_normalization(self.session.repo, roll_id, scene_id, locked_floors, locked_ceils, outliers=outliers, axis=axis)
+            known = tuple(f["hash"] for f in targets)
+            rolls.set_scene_normalization(
+                self.session.repo, roll_id, scene_id, locked_floors, locked_ceils, outliers=outliers, axis=axis, frames=known
+            )
             self.session.refresh_scene_marks()
             message = tr("Scene “{value}” analyzed", value=self._scene_name(scene_id))
 
@@ -6037,20 +6040,23 @@ class AppController(QObject):
         self.request_render()
 
     def _run_background_baseline(self) -> None:
-        """Measures the roll baseline without a dialog or progress bar, and without turning any
-        frame's Use Average on. Runs while a frame outside a scene is missing from the saved
-        baseline; a baseline saved before frames were recorded stays until Roll Analysis runs."""
+        """Measures the roll baseline, then each scene's, one per run, without a dialog or
+        progress bar and without turning any frame's Use Average on. A scope runs while one of its
+        frames is missing from its saved baseline; a baseline saved before frames were recorded
+        stays until Roll or Scene Analysis runs."""
         roll_id = self.state.active_roll_id
         if roll_id is None or self._active_batch is not None or self._background_baseline is not None:
             return
-        frames = [f for f in self._normalization_targets(None) if not self._waits_for_auto_crop(f)]
-        hashes = tuple(f["hash"] for f in frames)
-        if len(frames) < 2:
+        repo = self.session.repo
+        for scene_id in [None, *(sid for sid, _entry in rolls.roll_scenes(repo, roll_id))]:
+            frames = [f for f in self._normalization_targets(scene_id) if not self._waits_for_auto_crop(f)]
+            hashes = tuple(f["hash"] for f in frames)
+            saved = rolls.scene_normalization(repo, roll_id, scene_id) if scene_id else rolls.roll_normalization(repo, roll_id)
+            if len(frames) >= 2 and not (saved and (saved["frames"] is None or set(hashes) <= set(saved["frames"]))):
+                break
+        else:
             return
-        saved = rolls.roll_normalization(self.session.repo, roll_id)
-        if saved and (saved["frames"] is None or set(hashes) <= set(saved["frames"])):
-            return
-        self._background_baseline = (roll_id, hashes)
+        self._background_baseline = (roll_id, scene_id, hashes)
         self.bg_norm_worker.arm()
         self.background_normalization_requested.emit(
             NormalizationTask(
@@ -6064,17 +6070,21 @@ class AppController(QObject):
         )
         self.config_updated.emit()
 
-    def measuring_roll_baseline(self) -> bool:
+    def measuring_baseline(self) -> bool:
         return self._background_baseline is not None
 
     def _on_background_baseline(self, floors: tuple, ceils: tuple, outlier_hashes: list, axis: Optional[tuple] = None) -> None:
-        """Saves the measured baseline on the roll and moves the frames that already ride it."""
+        """Saves the measured baseline on the roll or scene and moves the frames that already ride it."""
         if self._background_baseline is None:
             return
-        roll_id, hashes = self._background_baseline
-        rolls.set_roll_normalization(self.session.repo, roll_id, floors, ceils, outliers=tuple(outlier_hashes), axis=axis, frames=hashes)
+        roll_id, scene_id, hashes = self._background_baseline
+        outliers = tuple(outlier_hashes)
+        if scene_id:
+            rolls.set_scene_normalization(self.session.repo, roll_id, scene_id, floors, ceils, outliers=outliers, axis=axis, frames=hashes)
+        else:
+            rolls.set_roll_normalization(self.session.repo, roll_id, floors, ceils, outliers=outliers, axis=axis, frames=hashes)
         if roll_id == self.state.active_roll_id:
-            self._refresh_riding_frames(roll_id, floors, ceils, axis)
+            self._refresh_riding_frames(scene_id, floors, ceils, axis)
             # Outliers moved with the new pool.
             self.session.refresh_average_marks()
         self._on_background_baseline_ended()
@@ -6085,24 +6095,25 @@ class AppController(QObject):
         self._background_baseline = None
         self.config_updated.emit()
 
-    def _refresh_riding_frames(self, roll_id: str, floors: tuple, ceils: tuple, axis: Optional[tuple]) -> None:
-        """A frame outside a scene that rides Use Average on the roll baseline, or on none yet,
-        takes the new numbers; its Use Average choices stay."""
-        source = f"roll:{roll_id}"
+    def _refresh_riding_frames(self, scene_id: Optional[str], floors: tuple, ceils: tuple, axis: Optional[tuple]) -> None:
+        """A frame that rides Use Average on this scene's or the roll's baseline, or on none yet
+        while it belongs here, takes the new numbers; its Use Average choices stay."""
+        source = f"scene:{scene_id}" if scene_id else f"roll:{self.state.active_roll_id}"
+        own = {f["hash"] for f in self._normalization_targets(scene_id)}
 
-        def rides(p) -> bool:
+        def rides(p, file_hash: str) -> bool:
             if p.lock_bounds or not (p.use_luma_average or p.use_color_average or p.use_cast_average):
                 return False
-            return p.baseline_source == source or not (p.baseline_source or p.is_locked_initialized)
+            return p.baseline_source == source or (file_hash in own and not (p.baseline_source or p.is_locked_initialized))
 
         values = {"locked_floors": floors, "locked_ceils": ceils, "locked_neutral_axis": axis, "baseline_source": source}
         current = self.state.current_file_hash
         changed: List[str] = []
-        for f in self._normalization_targets(None):
+        for f in self.state.uploaded_files:
             if f["hash"] == current:
                 continue
             p = self.session.repo.load_file_settings(f["hash"]) or self.session.config_for_asset(f)
-            if not rides(p.process):
+            if not rides(p.process, f["hash"]):
                 continue
             new_p = replace(p, process=replace(p.process, **values))
             self.session.push_external_history(f["hash"], p, new_p)
@@ -6110,8 +6121,7 @@ class AppController(QObject):
             changed.append(f["hash"])
         if changed:
             self.session.frames_edited_offscreen.emit(changed)
-        in_targets = any(f["hash"] == current for f in self._normalization_targets(None))
-        if in_targets and rides(self.state.config.process):
+        if current and rides(self.state.config.process, current):
             self.session.update_config(replace(self.state.config, process=replace(self.state.config.process, **values)), persist=True)
             self.request_render()
 
@@ -6146,7 +6156,7 @@ class AppController(QObject):
         }
 
     def set_selection_average(self, on: bool) -> None:
-        """Use Roll Average (on: Luma, Color and, where it applies, Cast) or Use Own Measurement
+        """Use Average (on: Luma, Color and, where it applies, Cast) or Use Own Measurement
         (off) on each selected frame, else the open one. A frame with no baseline yet stays."""
         current = self.state.current_file_hash
         changed: List[str] = []
@@ -6175,7 +6185,7 @@ class AppController(QObject):
         if changed:
             self.session.frames_edited_offscreen.emit(changed)
         if skipped:
-            self.set_status(tr("{value} without a roll baseline yet kept their own measurement", value=count_of(skipped, "frame")), 4000)
+            self.set_status(tr("{value} without an average yet kept their own measurement", value=count_of(skipped, "frame")), 4000)
 
     def toggle_average_peek(self, force: Optional[bool] = None) -> None:
         """Print the frame on the roll average without changing the edit. Opens with the frame's
@@ -6188,7 +6198,7 @@ class AppController(QObject):
         process = self.state.config.process
         if target:
             if not self._saved_baseline_fields(process):
-                self.set_status(tr("No roll baseline for this frame yet"), 3000)
+                self.set_status(tr("No average for this frame yet"), 3000)
                 self.average_peek_changed.emit(False)
                 return
             self.exit_compare()
@@ -6294,6 +6304,7 @@ class AppController(QObject):
             return None
         result = edit(self.state.active_roll_id)
         self.session.refresh_scene_marks()
+        self._background_baseline_timer.start()
         return result
 
     def request_group_as_scene(self, name: str) -> Optional[str]:
