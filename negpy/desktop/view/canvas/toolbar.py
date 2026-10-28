@@ -27,7 +27,7 @@ from negpy.desktop.view.canvas.zone_legend import ZoneLegend
 from negpy.desktop.view.keyboard_shortcuts import _context_undo
 from negpy.desktop.view.widgets.granular_settings_dialog import open_paste_dialog, open_sync_bounds_dialog
 from negpy.desktop.view.shortcut_registry import label_with_shortcut, tooltip_with_shortcut
-from negpy.desktop.view.widgets.segmented_choice import MenuButton, SegmentedChoice, ToggleMenuButton
+from negpy.desktop.view.widgets.segmented_choice import MenuButton, RightClickToggleAll, SegmentedChoice, ToggleMenuButton
 from negpy.desktop.view.widgets.collapsible import hidden_by_gating, roll_revert_icon
 from negpy.desktop.view.styles.templates import (
     BAR_BUTTON_HEIGHT,
@@ -551,45 +551,17 @@ class ActionToolbar(QWidget):
         self._info_actions[1].setToolTip(tr("File name, scan size and film mode"))
         self._info_actions[2].setToolTip(tr("Adds the frame's place in the strip, film, camera and lens, the proof and the export size"))
 
-        self.average_menu = ToggleMenuButton(
-            "mdi6.filmstrip",
-            "",
-            tr("Use Average: print this frame with the roll's measurement; right-click turns every average on or off."),
-            toggle_all=True,
+        # Opens the Roll Average row; checked while the frame uses an average.
+        self._average_icon = _icon("mdi6.filmstrip", checkable=True)
+        self.btn_average = self._action_button(
+            self._average_icon,
+            tr("Roll Average: try the average on this frame; right-click turns every average on or off."),
+            "toggle_average_peek",
+            self._on_average_clicked,
         )
-        self._average_icon = self.average_menu.icon()
-        self._average_menu_actions = {
-            "use_luma_average": self.average_menu.add_toggle(
-                tr("Luma"), tr("Use the roll's average black and white points, with color still per frame.")
-            ),
-            "use_color_average": self.average_menu.add_toggle(
-                tr("Color"), tr("Use the roll's average color balance, with black and white points still per frame.")
-            ),
-            "use_cast_average": self.average_menu.add_toggle(
-                tr("Cast"), tr("Color negatives only: use the roll's gray balance for Cast Removal, so frames under one light match.")
-            ),
-        }
-        for field_name, action in self._average_menu_actions.items():
-            action.triggered.connect(lambda on, f=field_name: self.controller.set_roll_average(**{f: on}))
-        self.average_menu.toggledAll.connect(self._on_use_all_averages)
-        # A frame in a measured scene picks the scene's average or the roll's.
-        self._average_scope_separator = self.average_menu.choice_menu.addSeparator()
-        scope_group = QActionGroup(self)
-        self._average_scope_actions = {}
-        for scope, tip in (
-            ("scene", tr("Use the scene's average: the frames shot under this light.")),
-            ("roll", tr("Use the roll's average, over the whole film.")),
-        ):
-            action = self.average_menu.choice_menu.addAction("")
-            action.setCheckable(True)
-            action.setToolTip(tip)
-            scope_group.addAction(action)
-            action.triggered.connect(lambda _checked=False, s=scope: self.controller.set_average_scope("roll" if s == "roll" else None))
-            self._average_scope_actions[scope] = action
-        self.average_menu.choice_menu.addSeparator()
-        preview_action = self.average_menu.choice_menu.addAction(_icon("fa5s.eye"), tr("Preview Average"))
-        self._menu_tip(preview_action, tr("This frame printed on the roll's average, to try it before you apply it"), "toggle_average_peek")
-        preview_action.triggered.connect(lambda: self.controller.toggle_average_peek(force=True))
+        self.btn_average.setCheckable(True)
+        self._average_right_click = RightClickToggleAll([self.btn_average], self._frame_average_states)
+        self._average_right_click.toggledAll.connect(self._on_use_all_averages)
 
         self.btn_tools = MenuButton(tr("Tools: crop, straighten, the pickers, masks and retouching, each with its own row here"))
         self.btn_tools.setIcon(_icon("fa5s.tools"))
@@ -836,6 +808,7 @@ class ActionToolbar(QWidget):
             self.btn_redo,
             self.btn_reference,
             self.btn_light_table,
+            self.btn_average,
             self.btn_copy,
             self.btn_copy_bounds,
             self.btn_paste,
@@ -867,7 +840,6 @@ class ActionToolbar(QWidget):
             self.btn_zoom,
             self.btn_tools,
             self.source_choice,
-            self.average_menu,
             self.overlays_menu,
             self.btn_export,
             self.btn_export_menu,
@@ -890,7 +862,7 @@ class ActionToolbar(QWidget):
             "undo": self.btn_undo,
             "redo": self.btn_redo,
             "source": self.source_choice,
-            "average": self.average_menu,
+            "average": self.btn_average,
             "overlays": self.overlays_menu,
             "reference": self.btn_reference,
             "copy": self.btn_copy,
@@ -1097,53 +1069,49 @@ class ActionToolbar(QWidget):
         )
         self.average_hint = hint_label()
         self.average_hint.setWordWrap(False)
-        self.average_axes = ToggleMenuButton(
-            "mdi6.filmstrip", tr("Off"), tr("The averages the peek prints with; right-click turns all of them on or off."), toggle_all=True
-        )
-        self._average_actions = {
-            "use_luma_average": self.average_axes.add_toggle(tr("Luma"), tr("The roll's average black and white points.")),
-            "use_color_average": self.average_axes.add_toggle(tr("Color"), tr("The roll's average color balance.")),
-            "use_cast_average": self.average_axes.add_toggle(tr("Cast"), tr("The roll's gray balance for Cast Removal.")),
+        self._average_toggles = {
+            "use_luma_average": tool_toggle(
+                "mdi6.brightness-6", tr("Luma"), tr("The roll's average black and white points; right-click turns every average on or off.")
+            ),
+            "use_color_average": tool_toggle("mdi6.palette-outline", tr("Color"), tr("The roll's average color balance.")),
+            "use_cast_average": tool_toggle("mdi6.scale-balance", tr("Cast"), tr("The roll's gray balance for Cast Removal.")),
         }
-        for field_name, action in self._average_actions.items():
-            action.toggled.connect(lambda on, f=field_name: self.controller.set_average_peek_axes(**{f: on}))
-        self.average_axes.toggledAll.connect(self._on_average_all)
+        for field_name, toggle in self._average_toggles.items():
+            toggle.setFixedHeight(BAR_BUTTON_HEIGHT)
+            toggle.toggled.connect(lambda on, f=field_name: self.controller.set_average_peek_axes(**{f: on}))
+        self._average_row_right_click = RightClickToggleAll(list(self._average_toggles.values()))
+        self._average_row_right_click.toggledAll.connect(self._on_average_all)
         self.btn_average_keep = labeled_action("fa5s.check", tr("Apply"), "", primary=True)
         self.btn_average_keep.setToolTip(wrap_tooltip(tr("Apply these averages to this frame, as one edit")))
         self.btn_average_keep.setMinimumWidth(self.btn_average_keep.sizeHint().width())
         self.btn_average_keep.clicked.connect(self.controller.keep_average_peek)
         self.btn_average_close = icon_button("fa5s.times", tr("Leave the frame as it was"))
         self.btn_average_close.clicked.connect(lambda: self.controller.toggle_average_peek(force=False))
-        for widget in (self.average_axes, self.btn_average_keep):
-            widget.setFixedHeight(BAR_BUTTON_HEIGHT)
+        self.btn_average_keep.setFixedHeight(BAR_BUTTON_HEIGHT)
         self.btn_average_close.setFixedHeight(BAR_TRACK_BUTTON_HEIGHT)
         layout.addWidget(self._average_label)
         layout.addWidget(self.average_scope)
         layout.addWidget(self.average_hint)
-        layout.addWidget(self.average_axes)
+        for toggle in self._average_toggles.values():
+            layout.addWidget(toggle)
         layout.addWidget(self._create_separator())
         layout.addWidget(self.btn_average_keep)
         layout.addWidget(self.btn_average_close)
         v_layout.addWidget(self._average_row, 0, Qt.AlignmentFlag.AlignHCenter)
 
     def _on_average_all(self, on: bool) -> None:
-        shown = {f: on for f, a in self._average_actions.items() if a.isVisible() and a.isEnabled()}
+        shown = {f: on for f, t in self._average_toggles.items() if not t.isHidden() and t.isEnabled()}
         self.controller.set_average_peek_axes(**shown)
 
     def _sync_average_row(self) -> None:
         state = self.session.state
         process = state.config.process
         cast = process.process_mode == ProcessMode.C41
-        self._average_actions["use_cast_average"].setVisible(cast)
-        on = []
-        for field_name, action in self._average_actions.items():
-            action.blockSignals(True)
-            action.setChecked(bool(state.average_peek_axes.get(field_name)))
-            action.blockSignals(False)
-            if action.isChecked() and action.isVisible():
-                on.append(action.text())
-        self.average_axes.setText(icon_text(", ".join(on) if on else tr("Off")))
-        self.average_axes.refresh()
+        self._average_toggles["use_cast_average"].setVisible(cast)
+        for field_name, toggle in self._average_toggles.items():
+            toggle.blockSignals(True)
+            toggle.setChecked(bool(state.average_peek_axes.get(field_name)))
+            toggle.blockSignals(False)
         scopes = self.controller.average_scopes()
         self.average_scope.setVisible(bool(scopes))
         self.average_scope.blockSignals(True)
@@ -1585,7 +1553,7 @@ class ActionToolbar(QWidget):
         controller.zoom_changed.connect(self._on_zoom_changed)
 
         self.session.state_changed.connect(self._update_ui_state)
-        controller.config_updated.connect(lambda: "average" in self._item_ids and self._sync_average_menu())
+        controller.config_updated.connect(lambda: "average" in self._item_ids and self._sync_average_button())
         self.session.asset_model.layoutChanged.connect(self._update_ui_state)
         self.session.files_changed.connect(self._sync_light_table_row)
         controller.tool_sync_requested.connect(self._sync_tool_row)
@@ -1813,42 +1781,51 @@ class ActionToolbar(QWidget):
         if "reset_to_roll" in self._item_ids:
             self.btn_reset_to_roll.setEnabled(bool(self.controller.can_revert_frame_to_roll()))
         if "average" in self._item_ids:
-            self._sync_average_menu()
+            self._sync_average_button()
+
+    def _on_average_clicked(self) -> None:
+        self.controller.toggle_average_peek(force=True)
+        self._sync_average_button()
+
+    def _average_fields(self) -> list[str]:
+        """The averages that apply to this frame: Cast only on a color negative with a neutral axis to use."""
+        state = self.session.state
+        process = state.config.process
+        fields = ["use_luma_average", "use_color_average"]
+        if process.process_mode == ProcessMode.C41:
+            found = self._saved_baseline(state) if state.active_roll_id else None
+            if (found is not None and found[0]["axis"] is not None) or process.use_cast_average:
+                fields.append("use_cast_average")
+        return fields
+
+    def _frame_average_states(self) -> list[bool]:
+        process = self.session.state.config.process
+        return [bool(getattr(process, f)) for f in self._average_fields()]
 
     def _on_use_all_averages(self, on: bool) -> None:
-        shown = [f for f, a in self._average_menu_actions.items() if a.isVisible() and a.isEnabled()]
-        self.controller.set_roll_average(**{f: on for f in shown})
+        self.controller.set_roll_average(**{f: on for f in self._average_fields()})
 
-    def _sync_average_menu(self) -> None:
-        """The frame's averages; usable once the roll has a baseline for the frame, or to turn one off."""
+    def _sync_average_button(self) -> None:
+        """Checked while the frame uses an average; usable once the roll has a baseline for the frame, or to turn one off."""
         state = self.session.state
         process = state.config.process
         found = self._saved_baseline(state) if state.active_roll_id else None
-        for field_name, action in self._average_menu_actions.items():
-            action.setChecked(bool(getattr(process, field_name)))
-        cast = self._average_menu_actions["use_cast_average"]
-        cast.setVisible(process.process_mode == ProcessMode.C41)
-        cast.setEnabled((found is not None and found[0]["axis"] is not None) or process.use_cast_average)
-        self.average_menu.refresh()
-        scopes = self.controller.average_scopes() if state.active_roll_id else {}
-        self._average_scope_separator.setVisible(bool(scopes))
-        chosen = "roll" if rolls.average_scope(process) else "scene"
-        for scope, action in self._average_scope_actions.items():
-            action.setVisible(bool(scopes))
-            action.setText(scopes.get(scope, ""))
-            action.setChecked(scope == chosen)
+        on = process.use_luma_average or process.use_color_average or process.use_cast_average
+        self.btn_average.setChecked(on)
         # The transfer path prints from a fixed window, with no measurement to average.
         printed = render_path(process) is RenderPath.PRINT
-        self.average_menu.setEnabled(printed and (found is not None or self.average_menu.isChecked()))
+        self.btn_average.setEnabled(printed and (found is not None or on))
         outlier = self._average_outlier(state, found)
-        self.average_menu.setIcon(qta.icon("mdi6.alert", color=THEME.warn_amber) if outlier else self._average_icon)
-        if self.average_menu.isEnabled() or not printed:
-            tip = tr("Use Average: print this frame with the roll's measurement; right-click turns every average on or off.")
+        self.btn_average.setIcon(qta.icon("mdi6.alert", color=THEME.warn_amber) if outlier else self._average_icon)
+        if self.btn_average.isEnabled() or not printed:
+            tip = tooltip_with_shortcut(
+                tr("Roll Average: try the average on this frame; right-click turns every average on or off."), "toggle_average_peek"
+            )
         elif state.active_roll_id and self.controller.measuring_baseline() is True:
             tip = tr("Measuring the average…")
         else:
             tip = tr("No average for this frame yet")
-        self.average_menu.setToolTip(wrap_tooltip(tip))
+        self.btn_average.setToolTip(wrap_tooltip(tip))
 
     def _activate_layout(self) -> None:
         # Innermost first: an outer layout reads its rows' size hints as of their last activation.

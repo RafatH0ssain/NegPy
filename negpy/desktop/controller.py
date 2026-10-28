@@ -6171,12 +6171,6 @@ class AppController(QObject):
             return {}
         return {"scene": rolls.source_label(repo, f"scene:{scene[1]}"), "roll": rolls.source_label(repo, f"roll:{roll_id}")}
 
-    def set_average_scope(self, scope: Optional[str]) -> None:
-        """A scene frame's Use Average reads the roll's average (*scope* ``"roll"``) or its scene's (None)."""
-        fields = self._saved_baseline_fields(self.state.config.process, scope=scope or "scene")
-        if fields:
-            self.set_roll_default("baseline", **fields)
-
     def _saved_baseline_fields(self, process, file_hash: Optional[str] = None, scope: Optional[str] = None) -> dict:
         """The scene or roll baseline a frame's Use Average reads (the active frame's by default), as
         process fields; none for a frame with Lock Bounds or a baseline taken from another frame.

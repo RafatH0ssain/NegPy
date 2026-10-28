@@ -1184,8 +1184,9 @@ def test_the_average_peek_shows_its_row_and_right_click_turns_every_average_on(q
         tb._sync_tool_row()
 
     assert not tb._average_row.isHidden()
-    assert tb.average_axes.text().strip() == "Luma"
-    QTest.mouseClick(tb.average_axes, Qt.MouseButton.RightButton)
+    assert tb._average_toggles["use_luma_average"].isChecked()
+    assert not tb._average_toggles["use_color_average"].isChecked()
+    QTest.mouseClick(tb._average_toggles["use_color_average"], Qt.MouseButton.RightButton)
     tb.controller.set_average_peek_axes.assert_called_with(use_luma_average=True, use_color_average=True)
 
 
@@ -1197,39 +1198,44 @@ def _average_toolbar(baseline):
     tb.session.state.current_file_hash = "h1"
     tb.controller.measuring_baseline.return_value = False
     with patch("negpy.desktop.view.canvas.toolbar.rolls.frame_saved_baseline", return_value=baseline):
-        tb._sync_average_menu()
+        tb._sync_average_button()
     return tb
 
 
-def test_a_scene_frame_chooses_the_scene_or_roll_average_from_the_bar(qapp):
+def test_the_average_row_offers_scene_or_roll_on_a_scene_frame(qapp):
     tb = _make_toolbar()
+    state = tb.session.state
+    state.average_peek = True
+    state.average_peek_scope = None
+    state.average_peek_axes = {"use_luma_average": True, "use_color_average": True, "use_cast_average": False}
+    state.config.process = WorkspaceConfig().process
     tb.controller.average_scopes.return_value = {"scene": "Scene “Woods”", "roll": "Roll “Portra”"}
-    tb.session.state.config.process = WorkspaceConfig().process
-    tb.session.state.active_roll_id = "r1"
     with patch("negpy.desktop.view.canvas.toolbar.rolls.frame_saved_baseline", return_value=None):
-        tb._sync_average_menu()
+        tb._sync_tool_row()
 
-    scene, roll = tb._average_scope_actions["scene"], tb._average_scope_actions["roll"]
-    assert scene.isVisible() and scene.isChecked() and scene.text() == "Scene “Woods”"
-    roll.trigger()
-    tb.controller.set_average_scope.assert_called_once_with("roll")
+    assert not tb.average_scope.isHidden()
+    tb.average_scope.setCurrentIndex(1)
+    tb.controller.set_average_peek_scope.assert_called_with("roll")
 
 
 def test_the_bar_average_button_waits_for_a_roll_baseline(qapp):
     tb = _average_toolbar(None)
-    assert not tb.average_menu.isEnabled()
-    assert "No average" in tb.average_menu.toolTip()
+    assert not tb.btn_average.isEnabled()
+    assert "No average" in tb.btn_average.toolTip()
 
 
-def test_the_bar_average_button_writes_one_axis_and_right_click_writes_all(qapp):
+def test_the_bar_average_button_opens_the_row_and_right_click_writes_all(qapp):
     from PyQt6.QtCore import Qt
     from PyQt6.QtTest import QTest
 
-    tb = _average_toolbar(({"floors": (0.0,) * 3, "ceils": (1.0,) * 3, "axis": None, "outliers": ()}, "roll:r1"))
-    assert tb.average_menu.isEnabled()
-    assert not tb.average_menu.isChecked()
-    tb._average_menu_actions["use_luma_average"].trigger()
-    tb.controller.set_roll_average.assert_called_with(use_luma_average=True)
-    QTest.mouseClick(tb.average_menu, Qt.MouseButton.RightButton)
+    baseline = ({"floors": (0.0,) * 3, "ceils": (1.0,) * 3, "axis": None, "outliers": ()}, "roll:r1")
+    tb = _average_toolbar(baseline)
+    assert tb.btn_average.isEnabled()
+    assert not tb.btn_average.isChecked()
+    with patch("negpy.desktop.view.canvas.toolbar.rolls.frame_saved_baseline", return_value=baseline):
+        tb.btn_average.click()
+        tb.controller.toggle_average_peek.assert_called_once_with(force=True)
+        assert not tb.btn_average.isChecked()
+        QTest.mouseClick(tb.btn_average, Qt.MouseButton.RightButton)
     # Cast waits for a neutral axis, so right-click leaves it out.
     tb.controller.set_roll_average.assert_called_with(use_luma_average=True, use_color_average=True)

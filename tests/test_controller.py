@@ -4047,21 +4047,6 @@ class TestPresetExportSelected(unittest.TestCase):
             scope="scene", use_luma_average=True, use_color_average=False, use_cast_average=False
         )
 
-    def test_a_scene_frame_switches_to_the_roll_average(self):
-        self.mock_session_manager.state.active_roll_id = "roll-1"
-        self.controller.set_roll_default = MagicMock()
-        by_scope = {
-            None: ({"floors": (0.2,) * 3, "ceils": (0.8,) * 3, "axis": None}, "scene:s1"),
-            "roll": ({"floors": (0.1,) * 3, "ceils": (0.9,) * 3, "axis": None}, "roll:roll-1"),
-        }
-
-        with patch.object(rolls, "frame_saved_baseline", side_effect=lambda _r, _id, _h, scope=None: by_scope.get(scope, by_scope[None])):
-            self.controller.set_average_scope("roll")
-
-        kwargs = self.controller.set_roll_default.call_args.kwargs
-        self.assertEqual(kwargs["baseline_source"], "roll:roll-1")
-        self.assertEqual(kwargs["locked_floors"], (0.1,) * 3)
-
     def test_the_peek_prints_a_scene_frame_on_the_roll_average_and_applies_it(self):
         self.controller.set_roll_average = MagicMock()
         by_scope = {
