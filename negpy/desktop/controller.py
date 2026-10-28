@@ -4980,6 +4980,7 @@ class AppController(QObject):
             self.refresh_thumbnails_for(hashes)
 
     def _on_frames_edited_offscreen(self, hashes: list[str]) -> None:
+        self.session.refresh_average_marks(set(hashes))
         if self.state.auto_thumbnail_refresh:
             self.refresh_thumbnails_for(hashes)
             return
@@ -6074,6 +6075,8 @@ class AppController(QObject):
         rolls.set_roll_normalization(self.session.repo, roll_id, floors, ceils, outliers=tuple(outlier_hashes), axis=axis, frames=hashes)
         if roll_id == self.state.active_roll_id:
             self._refresh_riding_frames(roll_id, floors, ceils, axis)
+            # Outliers moved with the new pool.
+            self.session.refresh_average_marks()
         self._on_background_baseline_ended()
         # Frames that arrived during the run.
         self._background_baseline_timer.start()
@@ -6124,13 +6127,14 @@ class AppController(QObject):
             changes.update(self._saved_baseline_fields(process))
         self.set_roll_default("baseline", **changes)
 
-    def _saved_baseline_fields(self, process) -> dict:
-        """The scene or roll baseline the active frame's Use Average reads, as process fields; none
-        for a frame with Lock Bounds or a baseline taken from another frame."""
+    def _saved_baseline_fields(self, process, file_hash: Optional[str] = None) -> dict:
+        """The scene or roll baseline a frame's Use Average reads (the active frame's by default), as
+        process fields; none for a frame with Lock Bounds or a baseline taken from another frame."""
+        file_hash = file_hash or self.state.current_file_hash
         kind = process.baseline_source.partition(":")[0]
-        if process.lock_bounds or kind not in ("", "roll", "scene") or not self.state.current_file_hash:
+        if process.lock_bounds or kind not in ("", "roll", "scene") or not file_hash:
             return {}
-        found = rolls.frame_saved_baseline(self.session.repo, self.state.active_roll_id, self.state.current_file_hash)
+        found = rolls.frame_saved_baseline(self.session.repo, self.state.active_roll_id, file_hash)
         if found is None:
             return {}
         saved, source = found
@@ -6140,6 +6144,38 @@ class AppController(QObject):
             "locked_neutral_axis": saved["axis"],
             "baseline_source": source,
         }
+
+    def set_selection_average(self, on: bool) -> None:
+        """Use Roll Average (on: Luma, Color and, where it applies, Cast) or Use Own Measurement
+        (off) on each selected frame, else the open one. A frame with no baseline yet stays."""
+        current = self.state.current_file_hash
+        changed: List[str] = []
+        skipped = 0
+        for f in self._reanalyze_targets():
+            config = (
+                self.state.config
+                if f["hash"] == current
+                else self.session.repo.load_file_settings(f["hash"]) or self.session.config_for_asset(f)
+            )
+            baseline = self._saved_baseline_fields(config.process, f["hash"]) if on else {}
+            if on and not baseline:
+                skipped += 1
+                continue
+            cast = on and config.process.process_mode == ProcessMode.C41 and baseline.get("locked_neutral_axis") is not None
+            axes = {"use_luma_average": on, "use_color_average": on, "use_cast_average": cast}
+            if f["hash"] == current:
+                self.set_roll_average(**axes)
+                continue
+            process = replace(config.process, **axes, roll_name=None, **invalidate_local_bounds(config.process), **baseline)
+            new_config = replace(config, process=process)
+            self.session.push_external_history(f["hash"], config, new_config)
+            self.session.repo.save_file_settings(f["hash"], new_config, file_path=f["path"])
+            self._lock_roll_card_for(f, f["hash"], new_config, "baseline")
+            changed.append(f["hash"])
+        if changed:
+            self.session.frames_edited_offscreen.emit(changed)
+        if skipped:
+            self.set_status(tr("{value} without a roll baseline yet kept their own measurement", value=count_of(skipped, "frame")), 4000)
 
     def toggle_average_peek(self, force: Optional[bool] = None) -> None:
         """Print the frame on the roll average without changing the edit. Opens with the frame's
@@ -6380,26 +6416,27 @@ class AppController(QObject):
         through (rolls.frame_roll). No-op with no frame, or a frame in no roll."""
         if not self.state.current_file_hash:
             return
-        roll_id = self._active_frame_roll()
+        idx = self.state.selected_file_idx
+        files = self.state.uploaded_files
+        asset = files[idx] if 0 <= idx < len(files) else {}
+        self._lock_roll_card_for(asset, self.state.current_file_hash, self.state.config, card_key)
+
+    def _lock_roll_card_for(self, asset: dict, file_hash: str, config: WorkspaceConfig, card_key: str) -> None:
+        """_lock_roll_card for any frame, given its config."""
+        roll_id = rolls.frame_roll(self.session.repo, self.state.active_roll_id, asset)
         if roll_id is None:
             return
         defaults = rolls.roll_defaults(self.session.repo, roll_id)
         # A field the roll has never set at all cannot "match" -- there is nothing yet
         # to differ from, and treating that as a match would hide a card's first-ever
         # edit from Apply until every one of its fields happened to get a roll default.
-        current = self._card_values(self.state.config, card_key)
+        current = self._card_values(config, card_key)
         matches_roll = all(name in defaults and rolls.same_value(value, defaults[name]) for name, value in current.items())
         diverged = not matches_roll
-        file_hash = rolls.unforked_hash(self.state.current_file_hash)
+        file_hash = rolls.unforked_hash(file_hash)
         if diverged == (card_key in rolls.frame_override_cards(self.session.repo, roll_id, file_hash)):
             return
         rolls.set_frame_override(self.session.repo, roll_id, file_hash, card_key, diverged)
-
-    def _active_frame_roll(self) -> Optional[str]:
-        idx = self.state.selected_file_idx
-        files = self.state.uploaded_files
-        asset = files[idx] if 0 <= idx < len(files) else {}
-        return rolls.frame_roll(self.session.repo, self.state.active_roll_id, asset)
 
     def set_process_mode(self, mode: str) -> None:
         """Switches Film Mode for the active frame, locking the "film" card away from

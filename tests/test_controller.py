@@ -3986,6 +3986,36 @@ class TestPresetExportSelected(unittest.TestCase):
         self.assertFalse(self.mock_session_manager.state.average_peek)
         self.controller.set_roll_average.assert_called_once_with(use_luma_average=True, use_color_average=False, use_cast_average=False)
 
+    def test_use_roll_average_on_the_selection_skips_a_frame_with_no_baseline(self):
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.mock_session_manager.state.selected_indices = [0, 2]
+        self.mock_session_manager.config_for_asset.return_value = WorkspaceConfig()
+        saved = ({"floors": (0.1,) * 3, "ceils": (0.9,) * 3, "axis": None, "outliers": ()}, "roll:roll-1")
+        msgs = []
+        self.controller.status_message_requested.connect(lambda text, *_: msgs.append(text))
+
+        with patch.object(rolls, "frame_saved_baseline", side_effect=lambda _r, _id, h: saved if h == "h1" else None):
+            self.controller.set_selection_average(True)
+
+        written = {c.args[0]: c.args[1].process for c in self.mock_session_manager.repo.save_file_settings.call_args_list}
+        self.assertEqual(list(written), ["h1"])
+        self.assertTrue(written["h1"].use_luma_average and written["h1"].use_color_average)
+        self.assertFalse(written["h1"].use_cast_average)
+        self.assertEqual(written["h1"].baseline_source, "roll:roll-1")
+        self.assertTrue(any("1 frame" in m for m in msgs))
+
+    def test_use_own_measurement_turns_every_average_off(self):
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.mock_session_manager.state.selected_indices = [0]
+        base = WorkspaceConfig()
+        riding = replace(base, process=replace(base.process, use_luma_average=True, use_cast_average=True))
+        self.mock_session_manager.repo.load_file_settings.side_effect = lambda h: riding if h == "h1" else None
+
+        self.controller.set_selection_average(False)
+
+        p = self.mock_session_manager.repo.save_file_settings.call_args.args[1].process
+        self.assertFalse(p.use_luma_average or p.use_color_average or p.use_cast_average)
+
     def test_no_pooled_axis_leaves_cast_average_off(self):
         self.mock_session_manager.repo.load_file_settings.return_value = None
         self.mock_session_manager.config_for_asset.return_value = WorkspaceConfig()

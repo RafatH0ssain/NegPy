@@ -119,7 +119,8 @@ class _ThumbnailDelegate(QStyledItemDelegate):
     """Scales each cached thumbnail into its cell; a frame not selected or under the pointer is
     dimmed. Triage marks are small bottom-right badges: check = keeper, cross + heavy dim =
     rejected; the bottom-left badge says the frame was built from several files
-    (stitch, HDR merge, RGB triplet, half-frame split). Top-left holds the
+    (stitch, HDR merge, RGB triplet, half-frame split). Top-right says the frame prints on the
+    roll average, amber when it is far from the roll color. Top-left holds the
     decode-failure badge, else a small dot saying the bitmap shown predates a settings
     change (a bulk apply reaches the file before a render reaches its thumbnail)."""
 
@@ -135,6 +136,8 @@ class _ThumbnailDelegate(QStyledItemDelegate):
         self._state = state
         self._placeholder_icon = qta.icon("fa5s.image", color=THEME.text_muted)
         self._activity_icon = qta.icon("fa5s.image", color=THEME.text_secondary)
+        self._average_icon = qta.icon("mdi6.filmstrip", color=THEME.mark_photo)
+        self._outlier_icon = qta.icon("mdi6.alert", color=THEME.warn_amber)
         self._activity_key = ""
         self._activity_index = QPersistentModelIndex()
         self._activity_phase = 0.0
@@ -243,6 +246,15 @@ class _ThumbnailDelegate(QStyledItemDelegate):
         painter.setPen(QPen(QColor(THEME.text_on_accent), 2))
         painter.drawLine(cx, cy - 4, cx, cy + 1)
         painter.drawPoint(cx, cy + 4)
+
+    def _draw_average_badge(self, painter: QPainter, img_rect: QRect, outlier: bool) -> None:
+        r = 9
+        cx, cy = img_rect.right() - r - 4, img_rect.top() + r + 4
+        painter.setPen(QPen(CHIP_RING, 1))
+        painter.setBrush(CHIP_FILL)
+        painter.drawEllipse(QRect(cx - r, cy - r, 2 * r, 2 * r))
+        icon = self._outlier_icon if outlier else self._average_icon
+        icon.paint(painter, QRect(cx - 6, cy - 6, 12, 12))
 
     def _draw_composite_badge(self, painter: QPainter, img_rect: QRect, kind: str, half: int, split_axis: str = "x") -> None:
         """Bottom-left mark: this frame was assembled from more than one file.
@@ -388,6 +400,8 @@ class _ThumbnailDelegate(QStyledItemDelegate):
             self._draw_mark_badge(painter, img_rect, check=True)
         if kind:
             self._draw_composite_badge(painter, img_rect, kind, int(file_info.get("half") or 0), str(file_info.get("split_axis") or "x"))
+        if file_info.get("average"):
+            self._draw_average_badge(painter, img_rect, file_info["average"] == "outlier")
         if not failed and self._is_stale_thumbnail(file_info):
             self._draw_stale_dot(painter, img_rect)
         painter.setClipping(False)
@@ -2497,6 +2511,9 @@ class FileBrowser(QWidget):
         )
         reanalyze = tr("Reanalyze {value}", value=count_of(n, "frame").title()) if on_selection else tr("Reanalyze Frame")
         menu.addAction(reanalyze).triggered.connect(lambda: self.controller.reanalyze_selection())
+        if state.active_roll_id:
+            menu.addAction(tr("Use Roll Average")).triggered.connect(lambda: self.controller.set_selection_average(True))
+            menu.addAction(tr("Use Own Measurement")).triggered.connect(lambda: self.controller.set_selection_average(False))
         if self.controller.thumbnail_refresh_running:
             menu.addAction(tr("Cancel Thumbnail Update")).triggered.connect(lambda: self.controller.cancel_thumbnail_refresh())
         else:
