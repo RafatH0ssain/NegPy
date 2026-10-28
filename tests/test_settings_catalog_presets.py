@@ -3,6 +3,8 @@ the flat-dict merge apply path, and preset_summary tooltips."""
 
 from dataclasses import replace
 
+import pytest
+
 from negpy.desktop.settings_catalog import all_rows, apply_selected_fields, preset_summary, rows_for_fields, selected_flat_dict
 from negpy.domain.models import WorkspaceConfig
 from negpy.features.process.models import DemosaicMode, ProcessMode
@@ -30,7 +32,7 @@ def test_channel_grouped_row_stores_all_channels():
 
 def test_crosstalk_row_bundles_fields():
     data = selected_flat_dict(WorkspaceConfig(), [_row("Crosstalk")])
-    assert set(data) == {"crosstalk_strength", "crosstalk_profile", "crosstalk_matrix"}
+    assert set(data) == {"crosstalk_strength", "crosstalk_profile", "crosstalk_matrix", "crosstalk_process"}
 
 
 def test_positive_source_row_is_catalogued():
@@ -43,10 +45,30 @@ def test_positive_source_row_is_catalogued():
     assert data == {"positive_source": True}
 
 
-def test_every_raw_decode_field_has_a_row():
-    """Copy, Paste and the Roll tab's Apply offer only catalog rows."""
-    listed = {f for r in rows_for_fields(card_fields("demosaic")) for f in r.fields}
-    assert listed == set(card_fields("demosaic"))
+@pytest.mark.parametrize("card", ["film", "sensor", "demosaic", "process", "baseline", "lens", "flatfield"])
+def test_every_roll_card_field_has_a_row(card):
+    """Copy Card Settings, Paste and the Roll tab's Apply offer only catalog rows."""
+    listed = {f for r in rows_for_fields(card_fields(card)) for f in r.fields}
+    assert set(card_fields(card)) <= listed
+
+
+def test_pasting_highlight_recovery_remeters():
+    """It rebuilds a slide's brightest pixels, which the white point is measured from."""
+    base = WorkspaceConfig()
+    src = replace(base, process=replace(base.process, process_mode=ProcessMode.E6, highlight_reconstruction=5))
+    target = replace(
+        src, process=replace(base.process, process_mode=ProcessMode.E6, local_floors=(0.1, 0.1, 0.1), local_ceils=(0.9, 0.9, 0.9))
+    )
+    out = apply_selected_fields(src, target, [_row("Highlight Recovery")])
+    assert out.process.highlight_reconstruction == 5
+    assert not out.process.is_local_initialized
+
+
+@pytest.mark.parametrize(("level", "label"), [(0, "Off"), (2, "Blend"), (5, "Reconstruct"), (7, "Reconstruct"), (1, "Off"), (42, "Off")])
+def test_highlight_recovery_shows_the_card_choice(level, label):
+    from negpy.desktop.settings_catalog import _format
+
+    assert _format(_row("Highlight Recovery"), (level,)) == label
 
 
 def test_pasting_raw_decode_carries_its_values_and_remeters_on_white_balance():

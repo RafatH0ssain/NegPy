@@ -19,8 +19,8 @@ from negpy.domain.models import WorkspaceConfig
 from negpy.features.exposure.papers import PAPER_PROFILES
 from negpy.features.geometry.models import with_auto_crop_field
 from negpy.features.metadata.capture import place_summary
-from negpy.features.process.logic import VALID_HIGHLIGHT_LEVELS
 from negpy.features.metadata.models import GEAR_FIELDS, PROCESS_FIELDS, PUSH_PULL_LABELS, SCANNING_FIELDS
+from negpy.features.process.logic import VALID_HIGHLIGHT_LEVELS
 from negpy.features.process.models import invalidate_local_bounds, with_film_fields
 from negpy.services.assets.flatfield import FlatFieldProfiles
 from negpy.services.assets.presets import preset_fields
@@ -119,12 +119,25 @@ def _fmt_white_balance(values: tuple) -> str:
     return tr("Linear RAW") if values[0] else tr("Camera WB")
 
 
-def _fmt_highlights(values: tuple) -> str:
-    """The Raw Decode card's three choices: an invalid level decodes as Off, any other non-Blend level is Reconstruct."""
-    level = values[0]
+# Highlight Recovery's choices: rawpy's HighlightMode collapsed to three, Reconstruct pinned
+# to libraw's own default level.
+HIGHLIGHT_LEVELS = (
+    (0, tr("Off")),
+    (2, tr("Blend")),
+    (5, tr("Reconstruct")),
+)
+
+
+def highlight_bucket(level: int) -> int:
+    """The HIGHLIGHT_LEVELS entry a stored level shows under. Any other valid level (3-9) is a
+    Reconstruct level. An invalid one is Off, as effective_highlight_reconstruction decodes it."""
     if level not in VALID_HIGHLIGHT_LEVELS or level == 0:
-        return tr("Off")
-    return tr("Blend") if level == 2 else tr("Reconstruct")
+        return 0
+    return 1 if level == 2 else 2
+
+
+def _fmt_highlights(values: tuple) -> str:
+    return HIGHLIGHT_LEVELS[highlight_bucket(values[0])][1]
 
 
 # fmt: off
@@ -149,9 +162,9 @@ CATALOG: list[tuple[str, tuple[SettingRow, ...]]] = [
         _row(mark("Use Average Cast"), "process", "use_cast_average", "locked_neutral_axis", fmt=lambda v: _fmt_scalar(v[0])),
     )),
     (mark("Calibration"), (
-        # Strength, profile and the baked matrix copy atomically: strength alone would leave the
-        # target on a stale or None matrix.
-        _row(mark("Crosstalk"), "process", "crosstalk_strength", "crosstalk_profile", "crosstalk_matrix", fmt=lambda v: _fmt_scalar(v[0]), sticky=True),
+        # Strength, profile, the baked matrix and the process it was baked for copy atomically:
+        # strength alone would leave the target on a stale or None matrix.
+        _row(mark("Crosstalk"), "process", "crosstalk_strength", "crosstalk_profile", "crosstalk_matrix", "crosstalk_process", fmt=lambda v: _fmt_scalar(v[0]), sticky=True),
         _row(mark("Sensor Crosstalk Profile"), "process", "sensor_profile", "sensor_matrix", "sensor_unmix", fmt=lambda v: _fmt_scalar(v[0]), sticky=True),
         # Absent from BOUNDS_INPUT_FIELDS: it acts after inversion, so it never feeds the meters.
         _row(mark("Hue Trim"), "process", "hue_trim", sticky=True),
@@ -366,8 +379,9 @@ BOUNDS_INPUT_FIELDS = frozenset(
         "sensor_profile",
         "sensor_matrix",
         "sensor_unmix",
-        # Camera WB or neutral changes the decoded source the meters read.
+        # Both change the decoded source the meters read.
         "linear_raw",
+        "highlight_reconstruction",
         "crop_from_auto",
         "autocrop_offset",
         "autocrop_rebate_trim",
@@ -422,9 +436,6 @@ _UNLISTED_CARD = {
     "metadata": mark("Metadata"),
     "export": mark("Export"),
 }
-_UNLISTED_FIELD_CARD = {
-    "crosstalk_process": mark("Calibration"),
-}
 
 
 def changed_settings(prev: WorkspaceConfig, config: WorkspaceConfig) -> list[tuple[str, str]]:
@@ -443,7 +454,7 @@ def changed_settings(prev: WorkspaceConfig, config: WorkspaceConfig) -> list[tup
         for f in dataclass_fields(after):
             key = (section, f.name)
             if key not in _LISTED and key not in _MEASURED and getattr(before, f.name) != getattr(after, f.name):
-                changed.append((_UNLISTED_FIELD_CARD.get(f.name) or _UNLISTED_CARD.get(section, section), ""))
+                changed.append((_UNLISTED_CARD.get(section, section), ""))
     return changed
 
 

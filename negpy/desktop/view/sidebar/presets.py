@@ -18,7 +18,8 @@ from negpy.desktop.view.widgets.granular_settings_dialog import GranularSettings
 from negpy.domain.models import WorkspaceConfig
 from negpy.services.assets.presets import Presets, is_valid_preset_name
 
-_PRESET_EXCLUDED_SECTIONS = frozenset({"Straighten"})
+# Raw Decode belongs to the rig: a preset applied on top would change the decode of every frame.
+_PRESET_EXCLUDED_SECTIONS = frozenset({"Straighten", "Raw Decode"})
 # The Crop and Optics cards hold the roll's format and the scanning rig; the crop rectangle is one frame's.
 _PRESET_ROW_IDS = frozenset(r.id for _title, rows in CATALOG for r in rows) - {"geometry.crop_rect"}
 
