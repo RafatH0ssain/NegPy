@@ -474,6 +474,7 @@ class ControlsPanel(QWidget):
         self.auto_mirror_btn = header.add_lead_toggle(icon, auto.plain_tooltip)
         self.auto_mirror_btn.setMenu(auto.choice_menu)
         self.auto_mirror_btn.setChecked(auto.isChecked())
+        auto.mirror_right_click(self.auto_mirror_btn)
         auto.toggled.connect(self.auto_mirror_btn.setChecked)
 
     @staticmethod
