@@ -6146,26 +6146,47 @@ class AppController(QObject):
             self.session.update_config(replace(self.state.config, process=replace(self.state.config.process, **values)), persist=True)
             self.request_render()
 
-    def set_roll_average(self, **axis: bool) -> None:
+    def set_roll_average(self, scope: Optional[str] = None, **axis: bool) -> None:
         """Use Average on the active frame alone. An axis turned on takes the current scene or
-        roll baseline, unless the frame carries one taken from another frame."""
+        roll baseline (the roll's with *scope* ``"roll"``), unless the frame carries one taken
+        from another frame."""
         process = self.state.config.process
         changes: dict = dict(axis)
         if "use_luma_average" in axis or "use_color_average" in axis:
             # The other axis re-derives per frame; roll_name drops since a picked baseline no longer applies whole.
             changes.update(roll_name=None, **invalidate_local_bounds(process))
         if any(axis.values()):
-            changes.update(self._saved_baseline_fields(process))
+            changes.update(self._saved_baseline_fields(process, scope=scope))
         self.set_roll_default("baseline", **changes)
 
-    def _saved_baseline_fields(self, process, file_hash: Optional[str] = None) -> dict:
+    def average_scopes(self) -> Dict[str, str]:
+        """``{"scene": label, "roll": label}`` while the open frame is in a measured scene and the
+        roll is measured too, so it can choose either average; else empty."""
+        roll_id, file_hash = self.state.active_roll_id, self.state.current_file_hash
+        if not roll_id or not file_hash:
+            return {}
+        repo = self.session.repo
+        scene = rolls.scene_by_hash(repo, roll_id).get(rolls.unforked_hash(file_hash))
+        if not scene or not rolls.scene_normalization(repo, roll_id, scene[1]) or not rolls.roll_normalization(repo, roll_id):
+            return {}
+        return {"scene": rolls.source_label(repo, f"scene:{scene[1]}"), "roll": rolls.source_label(repo, f"roll:{roll_id}")}
+
+    def set_average_scope(self, scope: Optional[str]) -> None:
+        """A scene frame's Use Average reads the roll's average (*scope* ``"roll"``) or its scene's (None)."""
+        fields = self._saved_baseline_fields(self.state.config.process, scope=scope or "scene")
+        if fields:
+            self.set_roll_default("baseline", **fields)
+
+    def _saved_baseline_fields(self, process, file_hash: Optional[str] = None, scope: Optional[str] = None) -> dict:
         """The scene or roll baseline a frame's Use Average reads (the active frame's by default), as
-        process fields; none for a frame with Lock Bounds or a baseline taken from another frame."""
+        process fields; none for a frame with Lock Bounds or a baseline taken from another frame.
+        *scope* ``"roll"`` or ``"scene"`` overrides the frame's own choice."""
         file_hash = file_hash or self.state.current_file_hash
         kind = process.baseline_source.partition(":")[0]
         if process.lock_bounds or kind not in ("", "roll", "scene") or not file_hash:
             return {}
-        found = rolls.frame_saved_baseline(self.session.repo, self.state.active_roll_id, file_hash)
+        scope = scope or rolls.average_scope(process)
+        found = rolls.frame_saved_baseline(self.session.repo, self.state.active_roll_id, file_hash, scope)
         if found is None:
             return {}
         saved, source = found
@@ -6229,6 +6250,7 @@ class AppController(QObject):
             if not any(axes.values()):
                 axes = {"use_luma_average": True, "use_color_average": True, "use_cast_average": self._cast_average_applies()}
             self.state.average_peek_axes = axes
+            self.state.average_peek_scope = rolls.average_scope(process)
         self.state.average_peek = target
         self.average_peek_changed.emit(target)
         if target:
@@ -6247,10 +6269,18 @@ class AppController(QObject):
         self.average_peek_changed.emit(True)
         self._render_average_peek()
 
+    def set_average_peek_scope(self, scope: Optional[str]) -> None:
+        if not self.state.average_peek:
+            return
+        self.state.average_peek_scope = scope
+        self.average_peek_changed.emit(True)
+        self._render_average_peek()
+
     def _render_average_peek(self) -> None:
         process = self.state.config.process
         axes = self.state.average_peek_axes
-        peek = replace(process, **axes, **(self._saved_baseline_fields(process) if any(axes.values()) else {}))
+        fields = self._saved_baseline_fields(process, scope=self.state.average_peek_scope or "scene") if any(axes.values()) else {}
+        peek = replace(process, **axes, **fields)
         self.request_render(readback_metrics=False, config_override=replace(self.state.config, process=peek))
 
     def keep_average_peek(self) -> None:
@@ -6260,7 +6290,7 @@ class AppController(QObject):
         axes = dict(self.state.average_peek_axes)
         self.state.average_peek = False
         self.average_peek_changed.emit(False)
-        self.set_roll_average(**axes)
+        self.set_roll_average(scope=self.state.average_peek_scope or "scene", **axes)
 
     def request_reset_roll(self) -> None:
         """Reset every visible frame to its own bare defaults -- Reset Settings, applied

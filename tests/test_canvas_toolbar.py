@@ -51,6 +51,7 @@ def _make_toolbar() -> ActionToolbar:
     controller.session.asset_model.rowCount.return_value = 1
     controller.session.repo.get_global_setting.return_value = 1.0
     controller.canvas = None
+    controller.average_scopes.return_value = {}
     controller.render_worker.processor.backend_name = "CPU"
     return ActionToolbar(controller)
 
@@ -1198,6 +1199,20 @@ def _average_toolbar(baseline):
     with patch("negpy.desktop.view.canvas.toolbar.rolls.frame_saved_baseline", return_value=baseline):
         tb._sync_average_menu()
     return tb
+
+
+def test_a_scene_frame_chooses_the_scene_or_roll_average_from_the_bar(qapp):
+    tb = _make_toolbar()
+    tb.controller.average_scopes.return_value = {"scene": "Scene “Woods”", "roll": "Roll “Portra”"}
+    tb.session.state.config.process = WorkspaceConfig().process
+    tb.session.state.active_roll_id = "r1"
+    with patch("negpy.desktop.view.canvas.toolbar.rolls.frame_saved_baseline", return_value=None):
+        tb._sync_average_menu()
+
+    scene, roll = tb._average_scope_actions["scene"], tb._average_scope_actions["roll"]
+    assert scene.isVisible() and scene.isChecked() and scene.text() == "Scene “Woods”"
+    roll.trigger()
+    tb.controller.set_average_scope.assert_called_once_with("roll")
 
 
 def test_the_bar_average_button_waits_for_a_roll_baseline(qapp):

@@ -350,7 +350,9 @@ class ProcessSidebar(BaseSidebar):
         if conf.locked_neutral_axis is not None:
             return True
         state = self.controller.state
-        found = rolls.frame_saved_baseline(self.controller.session.repo, state.active_roll_id, state.current_file_hash or "")
+        found = rolls.frame_saved_baseline(
+            self.controller.session.repo, state.active_roll_id, state.current_file_hash or "", rolls.average_scope(conf)
+        )
         return found is not None and found[0]["axis"] is not None
 
     def _update_baseline_source_hint(self, conf, transfer: bool) -> None:

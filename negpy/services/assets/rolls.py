@@ -1205,12 +1205,17 @@ def resolve_roll_baseline(repo: Any, roll_id: str, file_hash: str, config: "Work
     )
 
 
-def frame_saved_baseline(repo: Any, roll_id: Optional[str], file_hash: str) -> Optional[Tuple[dict, str]]:
-    """The baseline a frame's Use Average reads, its scene's else its roll's, with its
-    ``baseline_source``; None before that baseline is measured."""
+def average_scope(process: Any) -> Optional[str]:
+    """``"roll"`` for a frame that chose the roll's average over its scene's, else None."""
+    return "roll" if process.baseline_source.startswith("roll:") else None
+
+
+def frame_saved_baseline(repo: Any, roll_id: Optional[str], file_hash: str, scope: Optional[str] = None) -> Optional[Tuple[dict, str]]:
+    """The baseline a frame's Use Average reads, its scene's else its roll's (always the roll's
+    with *scope* ``"roll"``), with its ``baseline_source``; None before that baseline is measured."""
     if roll_id is None:
         return None
-    scene = scene_by_hash(repo, roll_id).get(unforked_hash(file_hash))
+    scene = None if scope == "roll" else scene_by_hash(repo, roll_id).get(unforked_hash(file_hash))
     saved = scene_normalization(repo, roll_id, scene[1]) if scene else roll_normalization(repo, roll_id)
     if not saved:
         return None

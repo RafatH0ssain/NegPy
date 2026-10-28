@@ -4043,7 +4043,42 @@ class TestPresetExportSelected(unittest.TestCase):
             self.controller.keep_average_peek()
 
         self.assertFalse(self.mock_session_manager.state.average_peek)
-        self.controller.set_roll_average.assert_called_once_with(use_luma_average=True, use_color_average=False, use_cast_average=False)
+        self.controller.set_roll_average.assert_called_once_with(
+            scope="scene", use_luma_average=True, use_color_average=False, use_cast_average=False
+        )
+
+    def test_a_scene_frame_switches_to_the_roll_average(self):
+        self.mock_session_manager.state.active_roll_id = "roll-1"
+        self.controller.set_roll_default = MagicMock()
+        by_scope = {
+            None: ({"floors": (0.2,) * 3, "ceils": (0.8,) * 3, "axis": None}, "scene:s1"),
+            "roll": ({"floors": (0.1,) * 3, "ceils": (0.9,) * 3, "axis": None}, "roll:roll-1"),
+        }
+
+        with patch.object(rolls, "frame_saved_baseline", side_effect=lambda _r, _id, _h, scope=None: by_scope.get(scope, by_scope[None])):
+            self.controller.set_average_scope("roll")
+
+        kwargs = self.controller.set_roll_default.call_args.kwargs
+        self.assertEqual(kwargs["baseline_source"], "roll:roll-1")
+        self.assertEqual(kwargs["locked_floors"], (0.1,) * 3)
+
+    def test_the_peek_prints_a_scene_frame_on_the_roll_average_and_applies_it(self):
+        self.controller.set_roll_average = MagicMock()
+        by_scope = {
+            None: ({"floors": (0.2,) * 3, "ceils": (0.8,) * 3, "axis": None, "outliers": ()}, "scene:s1"),
+            "roll": ({"floors": (0.1,) * 3, "ceils": (0.9,) * 3, "axis": None, "outliers": ()}, "roll:roll-1"),
+        }
+        with (
+            self._average_peek_setup(),
+            patch.object(rolls, "frame_saved_baseline", side_effect=lambda _r, _id, _h, scope=None: by_scope.get(scope, by_scope[None])),
+        ):
+            self.controller.toggle_average_peek()
+            self.controller.set_average_peek_scope("roll")
+            override = self.controller.request_render.call_args.kwargs["config_override"].process
+            self.controller.keep_average_peek()
+
+        self.assertEqual(override.baseline_source, "roll:roll-1")
+        self.assertEqual(self.controller.set_roll_average.call_args.kwargs["scope"], "roll")
 
     def test_use_roll_average_on_the_selection_skips_a_frame_with_no_baseline(self):
         self.mock_session_manager.state.active_roll_id = "roll-1"
@@ -4053,7 +4088,7 @@ class TestPresetExportSelected(unittest.TestCase):
         msgs = []
         self.controller.status_message_requested.connect(lambda text, *_: msgs.append(text))
 
-        with patch.object(rolls, "frame_saved_baseline", side_effect=lambda _r, _id, h: saved if h == "h1" else None):
+        with patch.object(rolls, "frame_saved_baseline", side_effect=lambda _r, _id, h, _scope=None: saved if h == "h1" else None):
             self.controller.set_selection_average(True)
 
         written = {c.args[0]: c.args[1].process for c in self.mock_session_manager.repo.save_file_settings.call_args_list}

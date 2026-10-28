@@ -82,7 +82,7 @@ A new frame gets the roll's film type, and the crop, print stock and Lab setting
 *   **Before / After** (`\`, or the **Print** menu): splits the canvas between the default conversion and your edit. Hold `\` to see the default alone. To compare with an earlier version, right-click it in **History**.
 *   **Peeks**: hold `N` for the scan as loaded (the negative), `M` for the flat master, and `P` for the camera's own JPEG. The **Print** menu has them too.
 *   **Roll Average** (`U`, or the **Print** menu): prints this frame on the roll's average and changes nothing. The bar shows which averages it uses; right-click there turns them all on or off. **Apply** saves them to the frame.
-*   **Roll Average** button (filmstrip icon on the toolbar): turns Luma, Color or Cast on for this frame at once, as one edit. Right-click turns them all on or off. An amber icon marks a frame far from the roll color. **Preview Roll Average** in its menu opens the peek.
+*   **Roll Average** button (filmstrip icon on the toolbar): turns Luma, Color or Cast on for this frame at once, as one edit. Right-click turns them all on or off. An amber icon marks a frame far from the roll color. On a frame in a scene, the menu and the peek choose the scene's or the roll's average. **Preview Average** in its menu opens the peek.
 *   **Export Size** (**Print** menu): shows the frame as it exports, at the size the **Export** panel sets, at 100%. Use it to judge sharpening and grain. It updates a moment after each edit.
 *   **Grain Focuser** (`Shift+L`, **Overlays** menu): a magnifier at the pointer that shows the exported pixels at their true size, with a sharpness number.
 *   **Reference View** (`Shift+R`): pins this frame beside the canvas, to match other frames to it.

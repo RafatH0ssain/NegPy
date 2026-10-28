@@ -572,8 +572,22 @@ class ActionToolbar(QWidget):
         for field_name, action in self._average_menu_actions.items():
             action.triggered.connect(lambda on, f=field_name: self.controller.set_roll_average(**{f: on}))
         self.average_menu.toggledAll.connect(self._on_use_all_averages)
+        # A frame in a measured scene picks the scene's average or the roll's.
+        self._average_scope_separator = self.average_menu.choice_menu.addSeparator()
+        scope_group = QActionGroup(self)
+        self._average_scope_actions = {}
+        for scope, tip in (
+            ("scene", tr("Use the scene's average: the frames shot under this light.")),
+            ("roll", tr("Use the roll's average, over the whole film.")),
+        ):
+            action = self.average_menu.choice_menu.addAction("")
+            action.setCheckable(True)
+            action.setToolTip(tip)
+            scope_group.addAction(action)
+            action.triggered.connect(lambda _checked=False, s=scope: self.controller.set_average_scope("roll" if s == "roll" else None))
+            self._average_scope_actions[scope] = action
         self.average_menu.choice_menu.addSeparator()
-        preview_action = self.average_menu.choice_menu.addAction(_icon("fa5s.eye"), tr("Preview Roll Average"))
+        preview_action = self.average_menu.choice_menu.addAction(_icon("fa5s.eye"), tr("Preview Average"))
         self._menu_tip(preview_action, tr("This frame printed on the roll's average, to try it before you apply it"), "toggle_average_peek")
         preview_action.triggered.connect(lambda: self.controller.toggle_average_peek(force=True))
 
@@ -1072,6 +1086,15 @@ class ActionToolbar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(THEME.space_md)
         self._average_label = field_label(tr("Roll average"))
+        self.average_scope = SegmentedChoice(
+            (("mdi6.select-group", tr("Scene")), ("fa5s.film", tr("Roll"))),
+            tr("Which average the peek prints with: the scene's or the roll's"),
+            data=("scene", "roll"),
+        )
+        self.average_scope.setFixedHeight(BAR_BUTTON_HEIGHT)
+        self.average_scope.currentChanged.connect(
+            lambda _i: self.controller.set_average_peek_scope("roll" if self.average_scope.currentData() == "roll" else None)
+        )
         self.average_hint = hint_label()
         self.average_hint.setWordWrap(False)
         self.average_axes = ToggleMenuButton(
@@ -1095,6 +1118,7 @@ class ActionToolbar(QWidget):
             widget.setFixedHeight(BAR_BUTTON_HEIGHT)
         self.btn_average_close.setFixedHeight(BAR_TRACK_BUTTON_HEIGHT)
         layout.addWidget(self._average_label)
+        layout.addWidget(self.average_scope)
         layout.addWidget(self.average_hint)
         layout.addWidget(self.average_axes)
         layout.addWidget(self._create_separator())
@@ -1120,7 +1144,12 @@ class ActionToolbar(QWidget):
                 on.append(action.text())
         self.average_axes.setText(icon_text(", ".join(on) if on else tr("Off")))
         self.average_axes.refresh()
-        found = self._saved_baseline(state)
+        scopes = self.controller.average_scopes()
+        self.average_scope.setVisible(bool(scopes))
+        self.average_scope.blockSignals(True)
+        self.average_scope.setCurrentIndex(1 if state.average_peek_scope == "roll" else 0)
+        self.average_scope.blockSignals(False)
+        found = self._saved_baseline(state, state.average_peek_scope or "scene")
         self._average_label.setText(rolls.source_label(self.session.repo, found[1]) if found else tr("Roll average"))
         outlier = self._average_outlier(state, found)
         scene = found is not None and found[1].startswith("scene:")
@@ -1128,8 +1157,10 @@ class ActionToolbar(QWidget):
         set_hint_kind(self.average_hint, "warning" if outlier else "muted")
         self.average_hint.setVisible(outlier)
 
-    def _saved_baseline(self, state):
-        return rolls.frame_saved_baseline(self.session.repo, state.active_roll_id, state.current_file_hash or "")
+    def _saved_baseline(self, state, scope=None):
+        """The baseline the frame's averages read, or the one *scope* names."""
+        scope = scope or rolls.average_scope(state.config.process)
+        return rolls.frame_saved_baseline(self.session.repo, state.active_roll_id, state.current_file_hash or "", scope)
 
     def _average_outlier(self, state, found) -> bool:
         """Whether the baseline *found* for this frame measured it far from the roll color."""
@@ -1799,6 +1830,13 @@ class ActionToolbar(QWidget):
         cast.setVisible(process.process_mode == ProcessMode.C41)
         cast.setEnabled((found is not None and found[0]["axis"] is not None) or process.use_cast_average)
         self.average_menu.refresh()
+        scopes = self.controller.average_scopes() if state.active_roll_id else {}
+        self._average_scope_separator.setVisible(bool(scopes))
+        chosen = "roll" if rolls.average_scope(process) else "scene"
+        for scope, action in self._average_scope_actions.items():
+            action.setVisible(bool(scopes))
+            action.setText(scopes.get(scope, ""))
+            action.setChecked(scope == chosen)
         # The transfer path prints from a fixed window, with no measurement to average.
         printed = render_path(process) is RenderPath.PRINT
         self.average_menu.setEnabled(printed and (found is not None or self.average_menu.isChecked()))

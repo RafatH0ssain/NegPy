@@ -348,6 +348,8 @@ class AppState:
     # Transient: preview is printing the frame on the roll average, with average_peek_axes on.
     average_peek: bool = False
     average_peek_axes: dict = field(default_factory=dict)
+    # "roll" while a scene frame peeks at the roll's average instead of its scene's.
+    average_peek_scope: Optional[str] = None
     # Transient: preview is showing the camera's own embedded preview, as a reference.
     embedded_peek: bool = False
     # Transient: preview is showing the selected Flat Field profile's self-check.

@@ -767,6 +767,20 @@ class TestRollNormalization:
         assert not frame_is_outlier(repo, process, "h2")
         assert not frame_is_outlier(repo, ProcessConfig(baseline_source="frame:a.tif"), "h1")
 
+    def test_a_scene_frame_reads_its_scene_unless_it_chose_the_roll(self):
+        from negpy.services.assets.rolls import average_scope, frame_saved_baseline
+
+        repo = _repo()
+        roll_id = create_virtual_roll(repo, "Portra", [])
+        sid = create_scene(repo, roll_id, "Woods", ["h1"])
+        set_roll_normalization(repo, roll_id, (0.1,) * 3, (0.9,) * 3)
+        set_scene_normalization(repo, roll_id, sid, (0.2,) * 3, (0.8,) * 3)
+
+        assert frame_saved_baseline(repo, roll_id, "h1")[1] == f"scene:{sid}"
+        assert frame_saved_baseline(repo, roll_id, "h1", "roll")[1] == f"roll:{roll_id}"
+        assert average_scope(ProcessConfig(baseline_source=f"roll:{roll_id}")) == "roll"
+        assert average_scope(ProcessConfig(baseline_source=f"scene:{sid}")) is None
+
     def test_defaults_cast_to_zero(self):
         repo = _repo()
         roll_id = create_virtual_roll(repo, "Portra", [])
