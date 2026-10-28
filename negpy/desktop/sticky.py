@@ -34,13 +34,16 @@ _CATALOG_EXPORT_FIELDS = frozenset(f for title, rows in CATALOG if title == "Exp
 # leave one silently uncarried.
 EXPORT_REMAINDER: frozenset[str] = frozenset(ExportConfig.__dataclass_fields__) - _CATALOG_EXPORT_FIELDS
 
-# Scan-setup preferences, carried unconditionally for the same reason, so the carry picker
-# leaves out the catalog section that lists them.
-ALWAYS_STICKY_SECTIONS: frozenset[str] = frozenset({"Raw Decode"})
+# Scan-setup preferences, carried unconditionally for the same reason.
 ALWAYS_STICKY_PROCESS: tuple[tuple[str, str], ...] = (
     ("last_linear_raw", "linear_raw"),
     ("last_demosaic_preview", "demosaic_preview"),
     ("last_demosaic_export", "demosaic_export"),
+)
+
+# Their catalog rows, which the carry picker leaves out: a choice there would change nothing.
+ALWAYS_STICKY_ROW_IDS: frozenset[str] = frozenset(
+    r.id for r in all_rows() if r.section == "process" and set(r.fields) & {attr for _key, attr in ALWAYS_STICKY_PROCESS}
 )
 
 # The heal, scratch and exclusion brush belongs to the user, not to a frame: every frame

@@ -39,9 +39,8 @@ from negpy.desktop.view.widgets.fold import Fold, group_fold
 from negpy.desktop.view.widgets.gear_library_panel import GearLibraryPanel
 from negpy.desktop.view.widgets.granular_settings_dialog import open_apply_dialog
 from negpy.desktop.view.widgets.tab_header import TabHeader
-from negpy.desktop.settings_catalog import rows_for_fields
+from negpy.desktop.settings_catalog import roll_card_rows
 from negpy.features.process.models import ProcessMode
-from negpy.services.assets.rolls import card_fields
 from negpy.desktop.view.widgets.stats import NegativeStatsWidget, ZonePlacementRows
 from negpy.desktop.view.widgets.overflow_bar import OverflowBar
 from negpy.desktop.view.widgets.panel_tab import PanelTab
@@ -453,8 +452,7 @@ class RightPanel(QWidget):
         """Every Roll card's settings in one picker. The cards themselves stay roll
         defaults; this carries their current values onto other frames, the same as the
         Film Strip's own apply with a narrower list."""
-        fields = tuple(f for card in _ROLL_TAB_CARDS for f in card_fields(card))
-        open_apply_dialog(self, self.controller.session, rows=rows_for_fields(fields))
+        open_apply_dialog(self, self.controller.session, rows=roll_card_rows(*_ROLL_TAB_CARDS))
 
     def _build_scan_page(self) -> QWidget:
         """Scanner choice and cards in a scroll area; the active scanner's footer stays pinned below."""

@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from negpy.desktop.settings_catalog import all_rows, apply_selected_fields, preset_summary, rows_for_fields, selected_flat_dict
+from negpy.desktop.settings_catalog import all_rows, apply_selected_fields, preset_summary, roll_card_rows, selected_flat_dict
 from negpy.domain.models import WorkspaceConfig
 from negpy.features.process.models import DemosaicMode, ProcessMode
 from negpy.services.assets.rolls import card_fields
@@ -48,7 +48,7 @@ def test_positive_source_row_is_catalogued():
 @pytest.mark.parametrize("card", ["film", "sensor", "demosaic", "process", "baseline", "lens", "flatfield"])
 def test_every_roll_card_field_has_a_row(card):
     """Copy Card Settings, Paste and the Roll tab's Apply offer only catalog rows."""
-    listed = {f for r in rows_for_fields(card_fields(card)) for f in r.fields}
+    listed = {f for r in roll_card_rows(card) for f in r.fields}
     assert set(card_fields(card)) <= listed
 
 
@@ -61,6 +61,16 @@ def test_pasting_highlight_recovery_remeters():
     )
     out = apply_selected_fields(src, target, [_row("Highlight Recovery")])
     assert out.process.highlight_reconstruction == 5
+    assert not out.process.is_local_initialized
+
+
+def test_pasting_demosaic_preview_remeters():
+    """The preview decode is what the meters read."""
+    base = WorkspaceConfig()
+    src = replace(base, process=replace(base.process, demosaic_preview=DemosaicMode.DCB))
+    target = replace(base, process=replace(base.process, local_floors=(0.1, 0.1, 0.1), local_ceils=(0.9, 0.9, 0.9)))
+    out = apply_selected_fields(src, target, [_row("Demosaic Preview")])
+    assert out.process.demosaic_preview == DemosaicMode.DCB
     assert not out.process.is_local_initialized
 
 
@@ -78,7 +88,7 @@ def test_pasting_raw_decode_carries_its_values_and_remeters_on_white_balance():
         process=replace(base.process, linear_raw=True, demosaic_export=DemosaicMode.DCB, highlight_reconstruction=2),
     )
     target = replace(base, process=replace(base.process, local_floors=(0.1, 0.1, 0.1), local_ceils=(0.9, 0.9, 0.9)))
-    out = apply_selected_fields(src, target, rows_for_fields(card_fields("demosaic")))
+    out = apply_selected_fields(src, target, roll_card_rows("demosaic"))
     assert (out.process.linear_raw, out.process.demosaic_export, out.process.highlight_reconstruction) == (True, DemosaicMode.DCB, 2)
     assert not out.process.is_local_initialized
 

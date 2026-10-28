@@ -24,6 +24,7 @@ from negpy.features.process.logic import VALID_HIGHLIGHT_LEVELS
 from negpy.features.process.models import invalidate_local_bounds, with_film_fields
 from negpy.services.assets.flatfield import FlatFieldProfiles
 from negpy.services.assets.presets import preset_fields
+from negpy.services.assets.rolls import card_fields
 
 
 class SettingRow:
@@ -379,9 +380,10 @@ BOUNDS_INPUT_FIELDS = frozenset(
         "sensor_profile",
         "sensor_matrix",
         "sensor_unmix",
-        # Both change the decoded source the meters read.
+        # Each changes the decoded preview the meters read.
         "linear_raw",
         "highlight_reconstruction",
+        "demosaic_preview",
         "crop_from_auto",
         "autocrop_offset",
         "autocrop_rebate_trim",
@@ -565,6 +567,11 @@ FRAME_CARD_FIELDS: dict[str, tuple | None] = {
     "retouch": None,
     "finish": None,
 }
+
+
+def roll_card_rows(*card_keys: str) -> list[SettingRow]:
+    """The catalog rows of one or more Roll-tab cards (ROLL_DEFAULT_FIELDS keys)."""
+    return rows_for_fields(f for card in card_keys for f in card_fields(card))
 
 
 def frame_card_rows(card_key: str) -> list[SettingRow]:

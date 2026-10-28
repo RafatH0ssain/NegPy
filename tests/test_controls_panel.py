@@ -537,13 +537,12 @@ def test_a_roll_card_menu_offers_undo_only_for_its_own_cards(monkeypatch):
 
 
 def test_a_roll_card_menu_copies_that_card(monkeypatch):
-    from negpy.desktop.settings_catalog import rows_for_fields
-    from negpy.services.assets.rolls import card_fields
+    from negpy.desktop.settings_catalog import roll_card_rows
 
     panel, actions = _card_menu(monkeypatch, "demosaic")
     assert actions[0].enabled
     actions[0].slot()
-    panel.controller.session.copy_card_settings.assert_called_once_with(rows_for_fields(card_fields("demosaic")))
+    panel.controller.session.copy_card_settings.assert_called_once_with(roll_card_rows("demosaic"))
 
 
 def test_a_frame_card_menu_copies_that_card(monkeypatch):
