@@ -1,6 +1,7 @@
 from negpy.kernel.system.i18n import tr
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from negpy.desktop.view.widgets.collapsible import hidden_by_gating
 from negpy.desktop.view.widgets.segmented_choice import SegmentedChoice
 from negpy.desktop.view.sidebar.base import BaseSidebar, SliderPage
 from negpy.desktop.view.styles.templates import field_label, hint_label
@@ -193,7 +194,7 @@ class AltProcessSidebar(BaseSidebar):
 
     def slider_pages(self) -> tuple[SliderPage, ...]:
         # Picking a process is an edit, so Find offers one only where the card lets you pick it.
-        if not self.mode_btn.isEnabled():
+        if not self.mode_btn.isEnabled() or hidden_by_gating(self.mode_btn):
             return ()
         blocks = (
             (AltProcess.LITH, (self.exposure_slider, self.snatch_slider, self.abruptness_slider)),

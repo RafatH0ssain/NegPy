@@ -221,3 +221,40 @@ def test_leaving_the_app_closes_find(qapp):
     palette.show()
     palette._on_app_state(Qt.ApplicationState.ApplicationInactive)
     assert not palette.isVisible()
+
+
+def test_unpaired_show_and_hide_events_keep_one_app_state_connection(qapp):
+    from PyQt6.QtGui import QHideEvent, QShowEvent
+
+    window, _root, _toe = _fake_window()
+    palette = CommandPalette(window)
+    palette.hideEvent(QHideEvent())
+    palette.show()
+    palette.showEvent(QShowEvent())
+    palette.hide()
+    palette.hideEvent(QHideEvent())
+    assert not palette._watching_app
+    palette.show()
+    palette._on_app_state(Qt.ApplicationState.ApplicationInactive)
+    assert not palette.isVisible()
+
+
+def test_a_paged_slider_typed_in_full_ranks_as_exact():
+    paged = make_entry("slider", "Black Point (Global)", "Roll › Metering", None, None, None, "Black Point")
+    card = make_entry("card", "Black Point", "Roll", None)
+    assert rank([card, paged], "black point")[0] is paged
+
+
+def test_the_tour_sees_find_open(qapp):
+    from negpy.desktop.view.widgets import tutorial_steps
+
+    # A popup another test left open would be the active one.
+    while (stale := qapp.activePopupWidget()) is not None:
+        stale.close()
+    window, _root, _toe = _fake_window()
+    palette = CommandPalette(window)
+    # No event pass: an app-state change queued by an earlier test would close Find.
+    palette.show()
+    assert tutorial_steps._palette_open(window)
+    palette.reject()
+    assert not tutorial_steps._palette_open(window)

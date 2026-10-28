@@ -154,7 +154,7 @@ def rank(entries: list[Entry], query: str) -> list[Entry]:
         name = entry.name.casefold()
         if entry.stem in synonym_rank:
             score = (0, synonym_rank[entry.stem])
-        elif name == q:
+        elif name == q or entry.stem.casefold() == q:
             score = (1, 0)
         elif name.startswith(q):
             score = (2, 0)
@@ -287,6 +287,7 @@ class CommandPalette(QDialog):
         super().__init__(window, Qt.WindowType.Popup)
         self.setObjectName("command_palette")
         self._window = window
+        self._watching_app = False
         self._entries = build_index(window)
 
         root = QVBoxLayout(self)
@@ -322,10 +323,15 @@ class CommandPalette(QDialog):
         self.layout().activate()
         self.query.setFocus()
         # Qt closes a popup on a click in the app, but not when another app takes the focus.
-        QApplication.instance().applicationStateChanged.connect(self._on_app_state)
+        # Spontaneous show and hide events do not pair up, so the flag keeps one connection.
+        if not self._watching_app:
+            QApplication.instance().applicationStateChanged.connect(self._on_app_state)
+            self._watching_app = True
 
     def hideEvent(self, event) -> None:
-        QApplication.instance().applicationStateChanged.disconnect(self._on_app_state)
+        if self._watching_app:
+            QApplication.instance().applicationStateChanged.disconnect(self._on_app_state)
+            self._watching_app = False
         super().hideEvent(event)
 
     def _on_app_state(self, state: Qt.ApplicationState) -> None:
