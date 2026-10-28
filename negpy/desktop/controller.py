@@ -632,6 +632,7 @@ class AppController(QObject):
     status_progress_requested = pyqtSignal(int, int)
     # "" when no refresh is running.
     thumbnail_refresh_progress = pyqtSignal(str)
+    baseline_progress = pyqtSignal(str)
     batch_started = pyqtSignal(str, bool)  # title, abortable
     batch_progress = pyqtSignal(int, int, str)  # current, total, label
     batch_finished = pyqtSignal()
@@ -1138,6 +1139,7 @@ class AppController(QObject):
         self.norm_worker.error.connect(self._on_normalization_error)
         self.background_normalization_requested.connect(self.bg_norm_worker.process)
         self.bg_norm_worker.finished.connect(self._on_background_baseline)
+        self.bg_norm_worker.progress.connect(self._on_background_baseline_progress)
         self.bg_norm_worker.cancelled.connect(self._on_background_baseline_ended)
         self.bg_norm_worker.error.connect(self._on_background_baseline_ended)
 
@@ -6057,6 +6059,7 @@ class AppController(QObject):
         else:
             return
         self._background_baseline = (roll_id, scene_id, hashes)
+        self._on_background_baseline_progress(0, len(frames))
         self.bg_norm_worker.arm()
         self.background_normalization_requested.emit(
             NormalizationTask(
@@ -6091,8 +6094,26 @@ class AppController(QObject):
         # Frames that arrived during the run.
         self._background_baseline_timer.start()
 
+    def _shares_progress_bar(self) -> bool:
+        """The canvas bar belongs to a batch or a thumbnail refresh first; the background run only borrows it."""
+        return self._active_batch is None and not self._thumbnail_render_running
+
+    def _on_background_baseline_progress(self, done: int, total: int, *_args) -> None:
+        if self._background_baseline is None:
+            return
+        if self._background_baseline[1]:
+            text = tr("Scene average {index}/{total}", index=done, total=total)
+        else:
+            text = tr("Roll average {index}/{total}", index=done, total=total)
+        self.baseline_progress.emit(text)
+        if self._shares_progress_bar():
+            self.status_progress_requested.emit(done, total)
+
     def _on_background_baseline_ended(self, *_args) -> None:
         self._background_baseline = None
+        self.baseline_progress.emit("")
+        if self._shares_progress_bar():
+            self.status_progress_requested.emit(0, 0)
         self.config_updated.emit()
 
     def _refresh_riding_frames(self, scene_id: Optional[str], floors: tuple, ceils: tuple, axis: Optional[tuple]) -> None:

@@ -1564,6 +1564,7 @@ class FileBrowser(QWidget):
         self.semantic_action.setVisible(False)
 
         self._refresh_progress = ""
+        self._baseline_progress = ""
         # First in the Roll row: the roll's name over the tally of its frames.
         self.roll_name_label = QLabel("")
         self.roll_name_label.setStyleSheet(
@@ -1720,6 +1721,7 @@ class FileBrowser(QWidget):
         for signal in (model.dataChanged, model.layoutChanged, model.modelReset, model.rowsInserted, model.rowsRemoved):
             signal.connect(lambda *_args: self._rebate_timer.start())
         self.controller.thumbnail_refresh_progress.connect(self._on_thumbnail_refresh_progress)
+        self.controller.baseline_progress.connect(self._on_baseline_progress)
         self.session.state_changed.connect(self.sync_ui)
         self.session.files_changed.connect(self._on_files_changed)
         self.controller.first_scene_created.connect(lambda: self._apply_sort_order("scene"))
@@ -2109,6 +2111,10 @@ class FileBrowser(QWidget):
         self._refresh_progress = text
         self._update_tally()
 
+    def _on_baseline_progress(self, text: str) -> None:
+        self._baseline_progress = text
+        self._update_tally()
+
     def _update_tally(self) -> None:
         files = self.session.state.uploaded_files
         self._sync_hot_folder()
@@ -2132,8 +2138,9 @@ class FileBrowser(QWidget):
         if selected > 1:
             text += " · " + tr("{count} selected", count=selected)
         # First, so a narrow row elides the counts rather than the progress.
-        if self._refresh_progress:
-            text = f"{self._refresh_progress} · {text}"
+        for progress in (self._baseline_progress, self._refresh_progress):
+            if progress:
+                text = f"{progress} · {text}"
         roll_name = self._active_roll_name()
         # Frames that are not one roll get named as what they are: an edit here reaches the
         # roll each frame came from, which a strip that looks identical either way gives no sign of.

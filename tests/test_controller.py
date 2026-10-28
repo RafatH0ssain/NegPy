@@ -3880,6 +3880,24 @@ class TestPresetExportSelected(unittest.TestCase):
         self.assertIsNone(self.controller._active_batch)
         self.assertTrue(self.controller.measuring_baseline())
 
+    def test_background_run_reports_progress_and_clears_it(self):
+        self._capture_background_runs()
+        texts, bars = [], []
+        self.controller.baseline_progress.connect(texts.append)
+        self.controller.status_progress_requested.connect(lambda done, total: bars.append((done, total)))
+
+        with patch.object(rolls, "roll_normalization", return_value=None):
+            self.controller._run_background_baseline()
+        self.controller._on_background_baseline_progress(1, 3, "a.tif", True)
+        self.controller._thumbnail_render_running = True
+        self.controller._on_background_baseline_progress(2, 3, "b.tif", True)
+        self.controller._thumbnail_render_running = False
+        self.controller._on_background_baseline_ended()
+
+        self.assertEqual(texts, ["Roll average 0/3", "Roll average 1/3", "Roll average 2/3", ""])
+        # A thumbnail refresh owns the bar while it runs.
+        self.assertEqual(bars, [(0, 3), (1, 3), (0, 0)])
+
     def test_background_run_skips_a_roll_whose_baseline_knows_every_frame(self):
         tasks = self._capture_background_runs()
         for saved in ({"frames": ("h1", "h2", "h3", "h4")}, {"frames": None}):
