@@ -26,6 +26,7 @@ overlap on the sensor, so pair it with a [sensor calibration](#sensor-calibratio
 | **Camera** | Any body [libgphoto2 can drive](http://gphoto.org/proj/libgphoto2/support.php) with live view and remote capture. A body missing from that list often works through the generic PTP driver (an a7C II does). |
 | **python-gphoto2** | Optional dependency, LGPL. `pip install gphoto2`. No vendor SDK is bundled, linked or required. |
 | **Scanlight** *(optional)* | Needed for narrowband light only. |
+| **Lento Dock** *(optional)* | Used in place of a Scanlight. See [Lento Dock](#lento-dock). |
 
 Without python-gphoto2, the Scan tab's Camera scanner shows a one-line setup hint and the rest
 of NegPy works as usual.
@@ -170,6 +171,22 @@ and Single Exposure decode Linear RAW; a frame already edited keeps its own.
 **Narrowband light.** Narrowband LEDs separate the dye layers more cleanly than white light, so
 colors render more saturated. The *Digital (Adobe RGB)* print stock prints them through ideal
 dyes; a paper or print film in **Print stock** prints them through that stock's own dyes.
+
+### Lento Dock
+
+A Lento Dock can be the light in place of a Scanlight.
+NegPy drives the dock's continuous light, so the camera's shutter sets each exposure, as with
+a Scanlight. Live View, Meter, Calibrate, presets, Trichrome and Single Exposure work as
+described above.
+
+- Close Dock Connect before you open the Scan tab. Only one program can use the dock's port.
+- NegPy uses a Scanlight first. To scan with the dock, disconnect the Scanlight.
+- The dock has no white or infrared light. A white-light preset lights red, green and blue
+  together at the same level.
+- The dock does not move the film. Use the dock's buttons to go to the next frame.
+- When NegPy releases the dock, it puts back the dock's saved light mode and control mode.
+
+The dock's own pulsed light and its film transport stay with Dock Connect.
 
 ### Sensor calibration
 
@@ -322,6 +339,7 @@ LED at a time). Its remaining color error is film-dye crosstalk, which the densi
 | The aperture stepper is grayed out | The lens has no electronic diaphragm. | Set the aperture on the lens. |
 | A setting snaps back to its old value | Property writes are asynchronous. | NegPy polls until the value lands and logs a warning if it never does. Then the setting is not writable in the body's current mode. Try **M**. |
 | The Scanlight is not detected | Wrong USB-C port. | Only one of the two ports carries data; the other is power only. Use the data port. |
+| The Lento Dock is not detected | Dock Connect holds the dock's port, or a Scanlight is connected. | Quit Dock Connect. Disconnect the Scanlight. |
 | The Scanlight is not detected on Linux, and the data port is right | Your user cannot open the serial port (most distributions give it to the `dialout` group). | `sudo usermod -aG dialout $USER`, then log out and back in. |
 
 ## Notes and limitations
@@ -343,6 +361,7 @@ LED at a time). Its remaining color error is film-dye crosstalk, which the densi
 - **Tested on macOS.** Linux should work at least as well, but this is not verified.
 - **Speed.** Most of a triplet's time is the body's per-image transfer latency. Stills are
   taken inside the running live-view session, with no reconnect per frame.
+- **Lento Dock.** Tested with a Dock 35 on firmware 1.0.224.
 - **Credit.** The R/G/B sequencing and the exposure-calibration approach come from
   [rohanpandula/TriRGB](https://github.com/rohanpandula/TriRGB). The light is
   [jackw01/scanlight](https://github.com/jackw01/scanlight). The camera is driven through
