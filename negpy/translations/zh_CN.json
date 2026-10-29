@@ -1955,7 +1955,7 @@
   "Refresh device list": "刷新设备列表",
   "Refresh, Discovery Filters and Index Library": "刷新、发现筛选与索引图库",
   "Regex mode": "正则表达式模式",
-  "Register green and blue to the red exposure, to a fraction of a pixel, to remove fringing from capture drift.": "以亚像素精度将绿色和蓝色对齐到红色曝光，消除拍摄漂移引起的彩边。",
+  "Register red and blue to the green exposure, to a fraction of a pixel, to remove fringing from capture drift.": "以亚像素精度将红色和蓝色对齐到绿色曝光，消除拍摄漂移引起的彩边。",
   "Reject": "拒绝",
   "Reject frame (skipped by batch export)": "拒绝画面，批量导出时跳过",
   "Reject the selected frames: batch export skips them": "拒绝所选画面：批量导出会跳过它们",

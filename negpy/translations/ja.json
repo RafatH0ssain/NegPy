@@ -1955,7 +1955,7 @@
   "Refresh device list": "デバイスリストを更新する",
   "Refresh, Discovery Filters and Index Library": "リフレッシュ、検出フィルター、インデックスライブラリ",
   "Regex mode": "正規表現モード",
-  "Register green and blue to the red exposure, to a fraction of a pixel, to remove fringing from capture drift.": "緑と青を赤の露光にサブピクセル単位で位置合わせし、撮影中のずれによる色にじみを取り除きます。",
+  "Register red and blue to the green exposure, to a fraction of a pixel, to remove fringing from capture drift.": "赤と青を緑の露光にサブピクセル単位で位置合わせし、撮影中のずれによる色にじみを取り除きます。",
   "Reject": "拒否する",
   "Reject frame (skipped by batch export)": "リジェクトフレーム（一括エクスポートでスキップ）",
   "Reject the selected frames: batch export skips them": "選択したフレームを拒否します。一括書き出しではスキップされます",

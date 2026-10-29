@@ -1955,7 +1955,7 @@
   "Refresh device list": "Geräteliste aktualisieren",
   "Refresh, Discovery Filters and Index Library": "Aktualisieren, Suchfilter und Bibliothek indizieren",
   "Regex mode": "Regex-Modus",
-  "Register green and blue to the red exposure, to a fraction of a pixel, to remove fringing from capture drift.": "Grün und Blau auf die rote Belichtung ausrichten, auf Bruchteile eines Pixels genau, um Farbsäume durch Verschiebung bei der Aufnahme zu entfernen.",
+  "Register red and blue to the green exposure, to a fraction of a pixel, to remove fringing from capture drift.": "Rot und Blau auf die grüne Belichtung ausrichten, auf Bruchteile eines Pixels genau, um Farbsäume durch Verschiebung bei der Aufnahme zu entfernen.",
   "Reject": "Verwerfen",
   "Reject frame (skipped by batch export)": "Bild verwerfen (der Stapelexport überspringt es)",
   "Reject the selected frames: batch export skips them": "Die gewählten Bilder verwerfen: Der Stapelexport überspringt sie",
