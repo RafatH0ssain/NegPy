@@ -944,13 +944,13 @@ def _fixed_light_case(offsets=((0, 0), (360, 6)), slide=False, lit_window=True, 
 def _warped(parts, cfg):
     transforms, canvas = scale_transforms(cfg, [(p.shape[1], p.shape[0]) for p in parts])
     warped, masks = zip(*(warp_into_canvas(p, t, canvas) for p, t in zip(parts, transforms)))
-    feather = stitch_logic._SEAM_FEATHER_PX * (canvas[0] / cfg.stitch_canvas[0])
-    return list(warped), list(masks), canvas, feather
+    return list(warped), list(masks), canvas, canvas[0] / cfg.stitch_canvas[0]
 
 
 def _reference_composite(parts, cfg):
     """The assembly without lit coverage: gains, cut and blend over the full masks."""
-    warped, masks, canvas, feather = _warped(parts, cfg)
+    warped, masks, canvas, decoded = _warped(parts, cfg)
+    feather = stitch_logic._SEAM_FEATHER_PX * decoded
     for i in range(1, len(warped)):
         for j in range(i):
             if stitch_logic.negpy_core.mask_overlap(masks[j], masks[i]) >= stitch_logic._MIN_OVERLAP_PX:
@@ -981,25 +981,31 @@ def test_fixed_light_stitch_shows_film_not_holder(slide):
     rgb, _ = stitch_composite([p.copy() for p in parts], [None, None], cfg)
     assert _wrong_fraction(rgb, scene, offsets) < 0.001
     with mock.patch.object(stitch_logic, "lit_coverage", lambda warped, masks, *a: list(masks)):
-        today, _ = stitch_composite([p.copy() for p in parts], [None, None], cfg)
-    assert _wrong_fraction(today, scene, offsets) > 0.02, "the case must reproduce the wedge"
+        full_masks, _ = stitch_composite([p.copy() for p in parts], [None, None], cfg)
+    assert _wrong_fraction(full_masks, scene, offsets) > 0.02, "full masks show the wedge"
 
 
 def test_fixed_light_keeps_dense_slide_film_in_both_parts():
     """Dense film is dark in every part, so it is never unlit and both parts keep it."""
     _, parts, cfg = _fixed_light_case(slide=True, holder=0.003)
-    warped, masks, canvas, feather = _warped(parts, cfg)
-    cover = stitch_logic.lit_coverage(warped, masks, canvas, feather)
+    warped, masks, canvas, decoded = _warped(parts, cfg)
+    cover = stitch_logic.lit_coverage(warped, masks, canvas, decoded)
     assert not all(c is m for c, m in zip(cover, masks)), "the gate must open"
     shadow = (slice(100, 380), slice(640, 660))
     assert cover[0][shadow].all() and cover[1][shadow].all()
 
 
 def test_fixed_light_three_parts():
+    """The last part shares no lit film with the first, so it matches its gain to the middle one."""
     offsets = ((0, 0), (360, 6), (720, 12))
     scene, parts, cfg = _fixed_light_case(offsets)
+    parts[2] = parts[2] * np.float32(1.25)
     rgb, _ = stitch_composite([p.copy() for p in parts], [None] * 3, cfg)
     assert _wrong_fraction(rgb, scene, offsets) < 0.001
+    # The last part's own lit film, past the middle part's window.
+    own = (slice(40, 760), slice(1300, 1420))
+    ratio = float(np.median(rgb[own][..., 1] / scene[own][..., 1]))
+    assert ratio == pytest.approx(1.0, abs=0.02)
 
 
 @pytest.mark.parametrize(
@@ -1009,8 +1015,8 @@ def test_fixed_light_three_parts():
 )
 def test_a_stitch_lit_across_the_strip_is_unchanged(offsets, slide):
     _, parts, cfg = _fixed_light_case(offsets, slide=slide, lit_window=False)
-    warped, masks, canvas, feather = _warped(parts, cfg)
-    cover = stitch_logic.lit_coverage(warped, masks, canvas, feather)
+    warped, masks, canvas, decoded = _warped(parts, cfg)
+    cover = stitch_logic.lit_coverage(warped, masks, canvas, decoded)
     assert all(c is m for c, m in zip(cover, masks))
     rgb, _ = stitch_composite([p.copy() for p in parts], [None] * len(parts), cfg)
     assert np.array_equal(rgb, _reference_composite(parts, cfg))
@@ -1019,8 +1025,8 @@ def test_a_stitch_lit_across_the_strip_is_unchanged(offsets, slide):
 def test_light_drift_between_shots_is_not_unlit():
     _, parts, cfg = _fixed_light_case(lit_window=False)
     parts[1] = np.clip(parts[1] * np.float32(2**0.5), 0.0, 1.0)
-    warped, masks, canvas, feather = _warped(parts, cfg)
-    cover = stitch_logic.lit_coverage(warped, masks, canvas, feather)
+    warped, masks, canvas, decoded = _warped(parts, cfg)
+    cover = stitch_logic.lit_coverage(warped, masks, canvas, decoded)
     assert all(c is m for c, m in zip(cover, masks))
 
 
@@ -1030,8 +1036,8 @@ def test_a_misregistered_edge_does_not_cost_coverage():
     # A dark bar in the both-lit strip, shifted in the second part.
     parts[0][:, 676:680] = 0.01
     parts[1][:, 676 - 360 + 3 : 680 - 360 + 3] = 0.01
-    warped, masks, canvas, feather = _warped(parts, cfg)
-    cover = stitch_logic.lit_coverage(warped, masks, canvas, feather)
+    warped, masks, canvas, decoded = _warped(parts, cfg)
+    cover = stitch_logic.lit_coverage(warped, masks, canvas, decoded)
     assert not all(c is m for c, m in zip(cover, masks)), "the gate must open"
     near = (slice(40, 760), slice(660, 700))
     assert cover[0][near].all() and cover[1][near].all()
@@ -1041,8 +1047,8 @@ def test_windows_with_no_lit_strip_keep_the_masks():
     window = np.zeros(_FL_W, np.float32)
     window[200:500] = 1.0
     _, parts, cfg = _fixed_light_case(window=window)
-    warped, masks, canvas, feather = _warped(parts, cfg)
-    cover = stitch_logic.lit_coverage(warped, masks, canvas, feather)
+    warped, masks, canvas, decoded = _warped(parts, cfg)
+    cover = stitch_logic.lit_coverage(warped, masks, canvas, decoded)
     assert all(c is m for c, m in zip(cover, masks))
 
 
@@ -1050,8 +1056,8 @@ def test_lit_coverage_covers_every_covered_pixel():
     """A pixel in no coverage has no weight to normalize against and renders black."""
     for offsets in (((0, 0), (360, 6)), ((0, 0), (360, 6), (720, 12))):
         _, parts, cfg = _fixed_light_case(offsets)
-        warped, masks, canvas, feather = _warped(parts, cfg)
-        cover = stitch_logic.lit_coverage(warped, masks, canvas, feather)
+        warped, masks, canvas, decoded = _warped(parts, cfg)
+        cover = stitch_logic.lit_coverage(warped, masks, canvas, decoded)
         assert not all(c is m for c, m in zip(cover, masks)), "the gate must open"
         assert np.array_equal(np.any(cover, axis=0), np.any(masks, axis=0))
         for c, m in zip(cover, masks):
@@ -1070,6 +1076,6 @@ def test_gain_needs_enough_lit_overlap():
 def test_registered_panorama_lit_coverage_is_the_masks():
     _, part0, part1, _ = _parts()
     cfg = _registered_config(part0, part1)
-    warped, masks, canvas, feather = _warped([part0, part1], cfg)
-    cover = stitch_logic.lit_coverage(warped, masks, canvas, feather)
+    warped, masks, canvas, decoded = _warped([part0, part1], cfg)
+    cover = stitch_logic.lit_coverage(warped, masks, canvas, decoded)
     assert all(c is m for c, m in zip(cover, masks))

@@ -207,7 +207,8 @@ def _unlit_regions(unlit: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     count, labels, _, _ = negpy_core.connected_components_with_stats(u8, 8)
     depth = np.zeros(count, np.float32)
     if count > 1:
-        np.maximum.at(depth, labels.ravel(), negpy_core.distance_transform(u8, 2, 3).ravel())
+        inside = labels > 0
+        np.maximum.at(depth, labels[inside], negpy_core.distance_transform(u8, 2, 3)[inside])
     return labels, depth
 
 
@@ -215,53 +216,64 @@ def lit_coverage(
     warped: Sequence[np.ndarray],
     masks: Sequence[np.ndarray],
     canvas_wh: Tuple[int, int],
-    feather_px: float,
+    decoded_scale: float,
 ) -> List[np.ndarray]:
     """Each part's coverage, less where the part is unlit: a light window that stays while the
     film moves under it.
 
     Parts are compared with each other, because the same film spot has the same density in
     every part; dense film is dark in all of them and is never unlit. Runs at the seam scale.
-    Returns ``masks`` itself when no part has a thick unlit region, or when a pair that
-    overlaps has no lit strip to cut in.
+    Returns ``masks`` itself when no part has a deep unlit region, when the parts do not link
+    through lit strips, or when memory runs out, as ``find_seams`` does.
     """
+    try:
+        return _lit_coverage(warped, masks, canvas_wh, decoded_scale)
+    except MemoryError:
+        return list(masks)
+
+
+def _lit_coverage(
+    warped: Sequence[np.ndarray],
+    masks: Sequence[np.ndarray],
+    canvas_wh: Tuple[int, int],
+    decoded_scale: float,
+) -> List[np.ndarray]:
     if len(warped) < 2:
         return list(masks)
     w, h = canvas_wh
     scale = min(1.0, _SEAM_MAX_EDGE / max(w, h))
     size = (max(1, round(w * scale)), max(1, round(h * scale)))
-    # A small pixel that mixes a part's edge with empty canvas reads dark, so it only counts
-    # when fully covered.
-    valid = [negpy_core.resize_area(np.ascontiguousarray(m, dtype=np.float32), size) > 0.999 for m in masks]
+    near = [negpy_core.resize_nearest(np.ascontiguousarray(m).view(np.uint8), size) for m in masks]
+    # A small pixel at a part's edge mixes picture and empty canvas and reads dark, so the
+    # parts are compared only where all eight neighbours are covered too.
+    valid = [negpy_core.distance_transform(n, 3, 3) > 1 for n in near]
     if not all(v.any() for v in valid):
         return list(masks)
     green = [
-        np.where(v, negpy_core.resize_area(np.ascontiguousarray(img[..., 1], dtype=np.float32), size), np.float32(0.0))
+        np.where(v, negpy_core.resize_area(np.ascontiguousarray(img, dtype=np.float32), size)[..., 1], np.float32(0.0))
         for img, v in zip(warped, valid)
     ]
     top = np.max(green, axis=0)
     floor = _LIT_FLOOR * max(float(np.percentile(g[v], 99)) for g, v in zip(green, valid))
     shared = np.sum(valid, axis=0) >= 2
-    margin = _LIT_MARGIN_FEATHERS * feather_px * scale
+    margin = _LIT_MARGIN_FEATHERS * _SEAM_FEATHER_PX * decoded_scale * scale
     regions = [_unlit_regions(v & shared & (top > floor) & (g < _LIT_RATIO * top)) for g, v in zip(green, valid)]
     if not any(float(depth.max()) > _LIT_GATE_MARGINS * margin for _, depth in regions):
         return list(masks)
-    unlit = []
-    for labels, depth in regions:
-        keep = depth > _LIT_SPECKLE_MARGINS * margin
-        keep[0] = False
-        unlit.append(keep[labels])
 
     lit = []
-    for v, u in zip(valid, unlit):
-        if u.any():
-            clear = negpy_core.distance_transform(np.ascontiguousarray(~u, dtype=np.uint8), 2, 3) > margin
-            lit.append(v & clear)
+    for n, (labels, depth) in zip(near, regions):
+        keep = depth > _LIT_SPECKLE_MARGINS * margin
+        keep[0] = False
+        unlit = keep[labels]
+        if unlit.any():
+            clear = negpy_core.distance_transform(np.ascontiguousarray(~unlit, dtype=np.uint8), 2, 3) > margin
+            lit.append((n > 0) & clear)
         else:
-            lit.append(v)
+            lit.append(n > 0)
     # The cut needs a lit strip to run in: every part has to reach every other through
-    # strips that both sides light.
-    min_lit = _MIN_OVERLAP_PX * scale * scale
+    # strips that both sides light, of the same film area at every decode scale.
+    min_lit = _MIN_OVERLAP_PX * (decoded_scale * scale) ** 2
     group = list(range(len(lit)))
 
     def root(i: int) -> int:
@@ -278,11 +290,17 @@ def lit_coverage(
     any_lit = np.zeros(size[::-1], bool)
     for lit_i in lit:
         any_lit |= lit_i
-    small = [v & (lit_i | ~any_lit) for v, lit_i in zip(valid, lit)]
 
-    # Nearest upscaling and the strict small validity can leave a covered pixel in no
-    # coverage, and a pixel with no weight renders black: every part that covers it gets it.
-    cover = [m & (negpy_core.resize_nearest(s.astype(np.uint8), (w, h)) > 0) for m, s in zip(masks, small)]
+    # Each part gives up only what another part lights and it does not; its own lit edges
+    # stay. A removal reaches one small pixel into the edge blocks the nearest sample missed.
+    cover = []
+    for m, n, lit_i in zip(masks, near, lit):
+        removed = (n > 0) & ~lit_i & any_lit
+        beside = negpy_core.distance_transform(np.ascontiguousarray(~removed, dtype=np.uint8), 3, 3) <= 1
+        removed |= beside & (n == 0)
+        cover.append(m & ~(negpy_core.resize_nearest(removed.view(np.uint8), (w, h)) > 0))
+    # A covered pixel that every part gave up at canvas scale has no weight and renders
+    # black: every part that covers it gets it back.
     orphan = np.zeros((h, w), bool)
     for m in masks:
         orphan |= m
@@ -399,7 +417,8 @@ def stitch_composite(
     IR is carried only when every part has one.
     """
     transforms, canvas = scale_transforms(config, [(p.shape[1], p.shape[0]) for p in parts])
-    feather_px = _SEAM_FEATHER_PX * (canvas[0] / max(config.stitch_canvas[0], 1))
+    decoded_scale = canvas[0] / max(config.stitch_canvas[0], 1)
+    feather_px = _SEAM_FEATHER_PX * decoded_scale
     warped: List[np.ndarray] = []
     masks: List[np.ndarray] = []
     for i in range(len(parts)):
@@ -408,12 +427,11 @@ def stitch_composite(
         warped.append(img)
         masks.append(mask)
     # Unlit areas are judged on the parts as captured, so the gains come after.
-    coverage = lit_coverage(warped, masks, canvas, feather_px)
-    # Each part matches the first earlier part it overlaps, in order, over the area both
-    # cover; with too little of it the part keeps its own gain.
+    coverage = lit_coverage(warped, masks, canvas, decoded_scale)
+    # Each part matches the first earlier part whose coverage overlaps its own, in order.
     for i in range(1, len(warped)):
         for j in range(i):
-            if negpy_core.mask_overlap(masks[j], masks[i]) >= _MIN_OVERLAP_PX:
+            if negpy_core.mask_overlap(coverage[j], coverage[i]) >= _MIN_OVERLAP_PX:
                 gain_compensate(warped[j], coverage[j], warped[i], coverage[i])
                 break
     seams = find_seams(warped, coverage, canvas)
