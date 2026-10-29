@@ -267,10 +267,3 @@ def test_the_s_button_calls_the_scan_handler(sim):
                 break
             time.sleep(0.01)
     assert pressed == [1]
-
-
-def test_the_arrows_move_whole_frames_while_negpy_holds_the_dock(sim):
-    with LentoDock(serial_obj=sim) as dock:
-        dock.set_color(200, 110, 40)
-        assert sim.btnmode == "FRAME"
-    assert sim.btnmode == "BOTH"  # the user's setting comes back

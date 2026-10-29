@@ -18,7 +18,6 @@ class SimDockSerial:
         self.idle = "AUTO"
         self.hold = 0
         self.duty = (0, 0, 0)
-        self.btnmode = "BOTH"
         self.frames = frames  # frames on the strip; the first one is in the window
         self.frame = 0  # the frame in the window, counted from the first
         self.st = "READY" if frames else "IDLE"
@@ -102,13 +101,6 @@ class SimDockSerial:
         elif cmd == "CONTHOLD" and arg in ("0", "1"):
             self.hold = int(arg)
             self._say(f"CONTHOLD {arg}")
-        elif cmd == "BTNMODE":
-            if arg in ("BOTH", "JOG", "FRAME"):
-                self.btnmode = arg
-            elif arg:
-                self._say("ERR ARG")
-                return
-            self._say(f"BTNMODE={self.btnmode} step=0.5")
         elif line == "FRAME NEXT":
             self._frame_next()
         elif line == "EJECT":
