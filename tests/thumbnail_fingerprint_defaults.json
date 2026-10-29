@@ -124,7 +124,7 @@
    "hdr_ratios": "[]"
   },
   "lab": {
-   "chroma_denoise": "0.0",
+   "chroma_denoise": "2.5",
    "clahe_strength": "0.0",
    "glow_amount": "0.0",
    "halation_strength": "0.0",
@@ -210,5 +210,5 @@
    "vanadium_strength": "0.0"
   }
  },
- "render_version": 25
+ "render_version": 26
 }
