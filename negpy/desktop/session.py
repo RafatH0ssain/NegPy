@@ -1778,7 +1778,12 @@ class DesktopSessionManager(QObject):
             # even when the multi-selection was built without it (a Ctrl-toggle range).
             indices = set(self.state.selected_indices)
             indices.add(self.state.selected_file_idx)
-            target_indices = sorted(indices)
+            # Number visible, selected frames in Film Strip display order; a selected
+            # frame a filter hid stays a target, after the visible ones, in index order.
+            visible = self.asset_model.visible_actual_indices_ordered()
+            visible_set = set(visible)
+            target_indices = [i for i in visible if i in indices]
+            target_indices += sorted(i for i in indices if i not in visible_set)
         if skip_rejected:
             target_indices = [
                 i for i in target_indices if 0 <= i < len(self.state.uploaded_files) and not self.state.uploaded_files[i].get("excluded")
