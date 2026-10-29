@@ -7643,7 +7643,7 @@ class AppController(QObject):
             rolls.set_roll_defaults(self.session.repo, roll_id, **wanted)
 
     def _on_capture_flat(self, path: str) -> None:
-        """A strip's bare-light reference: save it as the roll's Flat Field profile before its frames import."""
+        """A strip's bare-light reference: save it as the roll's Flat Field profile, which its frames take."""
         req = getattr(self, "_last_capture_req", None)
         roll = req.roll_name if req is not None else os.path.splitext(os.path.basename(path))[0]
         self.save_flatfield_profile(f"{roll} (Lento Dock)", path)

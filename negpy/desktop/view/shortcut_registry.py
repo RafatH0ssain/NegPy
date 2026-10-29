@@ -181,7 +181,7 @@ REGISTRY: dict[str, ShortcutEntry] = {
     "lento_film_off": ShortcutEntry("", tr("Film: Off (Lento Dock)"), tr("Process")),
     "lento_film_next": ShortcutEntry("", tr("Film: Next Frame (Lento Dock)"), tr("Process")),
     "lento_film_strip": ShortcutEntry("", tr("Film: Whole Strip (Lento Dock)"), tr("Process")),
-    "lento_flat_first": ShortcutEntry("", tr("Toggle Flat Field First (Lento Dock)"), tr("Process")),
+    "lento_strip_flat": ShortcutEntry("", tr("Toggle Shoot Flat Field (Lento Dock)"), tr("Process")),
     "lento_eject": ShortcutEntry("", tr("Eject the film (Lento Dock)"), tr("Process")),
     "scanlight_infrared": ShortcutEntry("", tr("Toggle Infrared: an infrared exposure after every frame (Scanlight)"), tr("Process")),
     "mode_color_negative": ShortcutEntry("", tr("Mode: Color Negative"), tr("Process")),

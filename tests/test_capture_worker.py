@@ -1083,12 +1083,6 @@ class StripDock(FakeLight):
     def eject(self) -> None:
         self.events.append("eject")
 
-    def clear_window(self) -> None:
-        self.events.append("clear")
-
-    def restore_window(self) -> None:
-        self.events.append("restore")
-
 
 def _run_strip(tmp_path, monkeypatch, dock, peaks=(), camera=None, **request):
     import negpy.desktop.workers.capture_worker as capture_worker_module
@@ -1143,9 +1137,9 @@ def test_stop_ends_the_strip_between_frames(tmp_path, monkeypatch):
 
     original = capture_worker_module.CaptureWorker._advance_film
 
-    def advance_then_maybe_stop(self, port):
+    def advance_then_maybe_stop(self, port, eject=True):
         worker_box["w"] = self
-        moved = original(self, port)
+        moved = original(self, port, eject)
         stop_after_two()
         return moved
 
@@ -1155,10 +1149,10 @@ def test_stop_ends_the_strip_between_frames(tmp_path, monkeypatch):
     assert seen["cancelled"] == 1 and seen["strip"] == []
 
 
-def test_flat_field_first_shoots_the_bare_light_before_the_first_frame(tmp_path, monkeypatch):
+def test_shoot_flat_field_shoots_the_empty_dock_after_the_eject(tmp_path, monkeypatch):
     dock = StripDock(frames=2)
-    seen, shots = _run_strip(tmp_path, monkeypatch, dock, peaks=(0.7,), flat_first=True)
-    assert dock.events[:2] == ["clear", "restore"] and dock.events[2] == "frame"
+    seen, shots = _run_strip(tmp_path, monkeypatch, dock, peaks=(0.7,), strip_flat=True)
+    assert dock.events == ["frame", "advance", "frame", "advance", "eject"]
     assert len(shots) == 1 and seen["flat"] == shots
     assert os.path.dirname(shots[0]) == str(tmp_path / "flatfield" / "references")  # never in the roll
     assert "_FlatField_" in os.path.basename(shots[0])
@@ -1174,17 +1168,27 @@ def test_a_clipped_flat_is_shot_again_at_a_faster_shutter(tmp_path, monkeypatch)
             return super().capture(out_path)
 
     dock = StripDock(frames=1)
-    seen, shots = _run_strip(tmp_path, monkeypatch, dock, peaks=(1.0, 0.8), camera=Camera(), flat_first=True)
+    seen, shots = _run_strip(tmp_path, monkeypatch, dock, peaks=(1.0, 0.8), camera=Camera(), strip_flat=True)
     assert len(shots) == 2
-    assert camera_shutters[:2] == ["1/15", "1/60"]  # three stops under 1/2, then two more
+    assert camera_shutters[-2:] == ["1/15", "1/60"]  # after the frame: three stops under 1/2, then two more
     assert seen["flat"] == [shots[-1]]
 
 
-def test_a_flat_that_clips_at_every_shutter_stops_before_the_strip(tmp_path, monkeypatch):
+def test_a_flat_that_clips_at_every_shutter_keeps_the_strip(tmp_path, monkeypatch):
     dock = StripDock(frames=3)
-    seen, _ = _run_strip(tmp_path, monkeypatch, dock, peaks=(1.0,) * 4, flat_first=True)
-    assert seen["error"] and seen["finished"] == []
-    assert dock.events[-1] == "restore"  # the film always goes back
+    seen, _ = _run_strip(tmp_path, monkeypatch, dock, peaks=(1.0,) * 4, strip_flat=True)
+    assert len(seen["finished"]) == 3 and seen["strip"] == [(3, True)]
+    assert seen["flat"] == [] and seen["error"] == []
+
+
+def test_a_strip_that_stops_early_shoots_no_flat(tmp_path, monkeypatch):
+    class StuckDock(StripDock):
+        def advance_frame(self):
+            raise TimeoutError("no reply")
+
+    dock = StuckDock(frames=3)
+    seen, shots = _run_strip(tmp_path, monkeypatch, dock, peaks=(0.7,), strip_flat=True)
+    assert seen["strip"] == [(1, False)] and shots == [] and "eject" not in dock.events
 
 
 def test_the_eject_button_reports_the_film_out(monkeypatch):

@@ -101,7 +101,7 @@ class CaptureRequest:
     end_light: tuple[int, int, int, int] = (0, 0, 0, 0)  # r, g, b, w left lit after a successful frame; zeros = off
     advance_film: bool = False  # after a Scan, move the film to the next frame on a light that has a film transport
     whole_strip: bool = False  # scan and advance frame after frame until the strip ends or Stop
-    flat_first: bool = False  # with whole_strip: shoot the bare light first, for the roll's Flat Field profile
+    strip_flat: bool = False  # with whole_strip: after the eject, shoot the empty dock for the roll's Flat Field profile
     shutter_ladder: tuple[str, ...] = ()  # the body's shutter labels, for the flat's own exposure
 
 
@@ -189,7 +189,7 @@ class CaptureWorker(QObject):
     cancelled = pyqtSignal()
     error = pyqtSignal(str)
     status = pyqtSignal(str)
-    flat_captured = pyqtSignal(str)  # the bare-light reference shot before a strip
+    flat_captured = pyqtSignal(str)  # the bare-light reference shot after a strip
     strip_finished = pyqtSignal(int, bool)  # frames scanned, the strip ran to its end
     live_view_started = pyqtSignal(str)  # jpeg path being refreshed
     #: This body advertises no CAPTURE_PREVIEW, so no stream was started (issue #621). Carries
@@ -502,9 +502,10 @@ class CaptureWorker(QObject):
         if req.advance_film and not req.is_retake:
             self._advance_film(req.port)
 
-    def _advance_film(self, port: str) -> Optional[bool]:
+    def _advance_film(self, port: str, eject: bool = True) -> Optional[bool]:
         """Move the light's film one frame. True at the end of the strip, False when the next frame
-        is in place, None when the light has no film transport or the move failed."""
+        is in place, None when the light has no film transport or the move failed. With `eject`,
+        the strip leaves the dock at its end."""
         try:
             light = self._ensure_light(port)
             advance = getattr(light, "advance_frame", None)
@@ -519,6 +520,8 @@ class CaptureWorker(QObject):
         if not at_end:
             self.status.emit(tr("The next frame is in place."))
             return False
+        if not eject:
+            return True
         # The last frame stops in the window, short of the exit.
         if self._eject(light) is not False:
             self.status.emit(tr("End of the strip. Insert the next strip."))
@@ -551,45 +554,43 @@ class CaptureWorker(QObject):
 
     def _run_strip(self, req: CaptureRequest) -> None:
         """Scan frame after frame, moving the film after each, until the strip ends, a frame fails
-        or Stop. With `flat_first`, the bare-light reference comes before the first frame."""
-        if req.flat_first:
-            try:
-                path = self._capture_flat(req)
-            except Exception as exc:  # noqa: BLE001
-                if self._cancel.is_set():
-                    self.cancelled.emit()
-                    return
-                logger.exception("flat field capture failed")
-                self.error.emit(tr("Flat Field: {error}", error=exc))
-                return
-            self.flat_captured.emit(path)
+        or Stop. At the end the strip leaves the dock; with `strip_flat`, the empty dock is shot next.
+        The dock cannot advance after it moves the film out of the window and back, so the flat
+        never comes first."""
         scanned, at_end = 0, False
         for frame_number in range(req.frame_number, req.frame_number + _STRIP_FRAME_LIMIT):
             if self._cancel.is_set():
                 self.cancelled.emit()
                 return
-            one = replace(req, frame_number=frame_number, whole_strip=False, flat_first=False, advance_film=False)
+            one = replace(req, frame_number=frame_number, whole_strip=False, strip_flat=False, advance_film=False)
             if not self.run_capture(one):
                 return
             scanned += 1
-            moved = self._advance_film(req.port)
+            moved = self._advance_film(req.port, eject=False)
             if moved is None:
                 break
             if moved:
                 at_end = True
                 break
+        flat_error = ""
+        if at_end and self._eject(self._ensure_light(req.port)) and req.strip_flat and not self._cancel.is_set():
+            try:
+                self.flat_captured.emit(self._capture_flat(req))
+            except Exception as exc:  # noqa: BLE001
+                if not self._cancel.is_set():
+                    logger.exception("flat field capture failed")
+                    flat_error = tr("Flat Field: {error}", error=exc)
         self.strip_finished.emit(scanned, at_end)
+        if flat_error:
+            self.status.emit(flat_error)
 
     def _capture_flat(self, req: CaptureRequest) -> str:
-        """Shoot the bare light with the film out of the window, at the frame's LED levels and a
-        shutter that puts the brightest channel in range. The file goes beside the Flat Field
-        profiles, never into the roll."""
+        """Shoot the empty dock at the frame's LED levels and a shutter that puts the brightest
+        channel in range. The file goes beside the Flat Field profiles, never into the roll."""
         from negpy.services.capture.meter import shutter_at_most
 
         camera = self._acquire_camera()
         light = self._ensure_light(req.port)
-        if not hasattr(light, "clear_window"):
-            raise CaptureError(tr("This light cannot move the film out of the window."))
         ladder = scan_ladder(req.shutter_ladder)
         start = next((label for label in (req.shutters[0], _current_shutter(camera)) if label), "")
         if not ladder or not start:
@@ -597,34 +598,30 @@ class CaptureWorker(QObject):
         shutter = shutter_at_most(true_seconds(start, ladder) * _FLAT_START_FACTOR, ladder) or ladder[0]
         folder = os.path.join(APP_CONFIG.flatfield_dir, "references")
         service = CaptureService(light, camera)
-        self.status.emit(tr("Shooting the Flat Field with the film out of the window…"))
-        light.clear_window()
-        try:
-            for _attempt in range(_FLAT_ATTEMPTS):
-                settings = CaptureSettings(
-                    roll_name=f"{req.roll_name}_FlatField",
-                    frame_number=0,
-                    output_folder=folder,
-                    levels=req.levels,
-                    settle_s=req.settle_s,
-                    shutters=(shutter, shutter, shutter),
-                    iso=req.iso or None,
-                    aperture=req.aperture or None,
-                )
-                path = service.capture_rgb_single(settings, cancel=self._cancel)
-                peak = _flat_peak(path)
-                if _FLAT_LOW <= peak <= _FLAT_HIGH:
-                    return path
-                factor = _FLAT_CLIPPED_STEP if peak > _FLAT_HIGH else _FLAT_TARGET / max(peak, 1e-3)
-                better = shutter_at_most(true_seconds(shutter, ladder) * factor, ladder)
-                if better is None or better == shutter:
-                    break
-                shutter = better
-            if peak <= _FLAT_HIGH:
-                return path  # darker than ideal, but unclipped: the gain is a ratio
-            raise CaptureError(tr("The Flat Field clips at the fastest shutter. Close the aperture or lower the ISO."))
-        finally:
-            light.restore_window()
+        self.status.emit(tr("Shooting the Flat Field on the empty dock…"))
+        for _attempt in range(_FLAT_ATTEMPTS):
+            settings = CaptureSettings(
+                roll_name=f"{req.roll_name}_FlatField",
+                frame_number=0,
+                output_folder=folder,
+                levels=req.levels,
+                settle_s=req.settle_s,
+                shutters=(shutter, shutter, shutter),
+                iso=req.iso or None,
+                aperture=req.aperture or None,
+            )
+            path = service.capture_rgb_single(settings, cancel=self._cancel)
+            peak = _flat_peak(path)
+            if _FLAT_LOW <= peak <= _FLAT_HIGH:
+                return path
+            factor = _FLAT_CLIPPED_STEP if peak > _FLAT_HIGH else _FLAT_TARGET / max(peak, 1e-3)
+            better = shutter_at_most(true_seconds(shutter, ladder) * factor, ladder)
+            if better is None or better == shutter:
+                break
+            shutter = better
+        if peak <= _FLAT_HIGH:
+            return path  # darker than ideal, but unclipped: the gain is a ratio
+        raise CaptureError(tr("The Flat Field clips at the fastest shutter. Close the aperture or lower the ISO."))
 
     def _report_clipping(self, path: str) -> None:
         """Emit `clipped` when a single-file capture clips as Meter judges a probe. Runs after

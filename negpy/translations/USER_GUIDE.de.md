@@ -561,7 +561,7 @@ NegPy hält macOS und Windows während des Scans wach. Schalte unter Linux vor e
 *   **Bild messen…** (Coolscan): misst die Belichtung an einem Bild und nutzt sie für jeden späteren Scan, damit alle Bilder einer Rolle zusammenpassen. **Entsperren** beendet das. Miss für jede Rolle neu.
 *   **Prescan…** (Plustek): eine schnelle Vorschau des ganzen Bereichs. Ziehe einen Zuschnitt auf, dann liest der nächste Scan nur diesen Bereich.
 
-<!-- panel:scan_camera src:05684e74 -->
+<!-- panel:scan_camera src:4913957b -->
 ### Kamera
 
 Scannt mit einer Kamera auf einem Reprostativ, per USB im Modus **PC Remote** verbunden (macOS und Linux; sie braucht `python-gphoto2`). Mit einem NegPy-**Scanlight** steuert NegPy auch das Licht. CAMERA_SCANNING.md beschreibt die Einrichtung.
@@ -574,7 +574,7 @@ Scannt mit einer Kamera auf einem Reprostativ, per USB im Modus **PC Remote** ve
 *   **Aufnahmeverzögerung**: wartet vor der ersten Belichtung, damit sich ein wackliger Tisch beruhigt.
 *   **Licht eingeschaltet lassen** (die Glühbirne): hält das Scanlight nach jedem Scan an, damit du das nächste Bild einrichten kannst.
 *   **Film** (mit einem Lento Dock): was das Dock beim Klick auf Scan tut. **Nächstes Bild** transportiert den Film nach jedem Scan um ein Bild. **Ganzer Streifen** scannt jedes Bild und wirft den Streifen dann aus; Stopp beendet den Lauf. Neu aufnehmen bewegt den Film nie. **Auswerfen** transportiert den Streifen heraus.
-*   **Zuerst Flat Field**: nimmt vor einem ganzen Streifen das blanke Licht auf und speichert es als Flat-Field-Profil der Rolle.
+*   **Flat Field aufnehmen**: nimmt nach dem Auswerfen eines ganzen Streifens das leere Dock auf und speichert es als Flat-Field-Profil der Rolle.
 
 <!-- panel:scan_light src:e58660c1 -->
 ### Vorgabe

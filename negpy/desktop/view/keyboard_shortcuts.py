@@ -509,8 +509,8 @@ class ShortcutManager:
             "lento_film_strip": lambda: (
                 right.scanlight_sidebar.film_choice.setCurrentIndex(2) if not right.scanlight_sidebar.dock_body.isHidden() else None
             ),
-            "lento_flat_first": lambda: (
-                right.scanlight_sidebar.flat_first_btn.toggle() if not right.scanlight_sidebar.flat_first_btn.isHidden() else None
+            "lento_strip_flat": lambda: (
+                right.scanlight_sidebar.strip_flat_btn.toggle() if not right.scanlight_sidebar.strip_flat_btn.isHidden() else None
             ),
             "lento_eject": lambda: right.scanlight_sidebar.eject_btn.click() if not right.scanlight_sidebar.dock_body.isHidden() else None,
             "scanlight_infrared": lambda: (

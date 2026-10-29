@@ -777,7 +777,7 @@ Scans with a camera on a copy stand, connected over USB in **PC Remote** mode (m
 *   **Capture Delay**: waits before the first exposure, so a shaky table can settle.
 *   **Keep Light On** (the bulb): keeps the Scanlight lit after each scan, so you can frame the next shot.
 *   **Film** (with a Lento Dock): what the dock does when you click Scan. **Next Frame** moves the film one frame after each scan. **Whole Strip** scans every frame, then ejects the strip; Stop ends it. Retake never moves the film. **Eject** moves the strip out.
-*   **Flat Field First**: before a whole strip, shoots the bare light and saves it as the roll's Flat Field profile.
+*   **Shoot Flat Field**: after a whole strip ejects, shoots the empty dock and saves it as the roll's Flat Field profile.
 
 <!-- panel:scan_light -->
 ### Preset

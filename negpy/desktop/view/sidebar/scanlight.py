@@ -380,14 +380,14 @@ class ScanlightSidebar(QWidget):
         self.film_choice.setCurrentIndex(max(0, self.film_choice.findData(self._settings.film_transport)))
         self.eject_btn = icon_button("fa5s.eject", tr("Eject: move the strip out of the dock."))
         dock.addLayout(field_row(tr("Film"), self.film_choice, self.eject_btn))
-        self.flat_first_btn = labeled_toggle(
+        self.strip_flat_btn = labeled_toggle(
             "fa5s.vector-square",
-            tr("Flat Field First"),
-            self._settings.flat_first,
-            tr("Before the strip, shoot the bare light and use it as the roll's Flat Field profile."),
+            tr("Shoot Flat Field"),
+            self._settings.strip_flat,
+            tr("After the strip ejects, shoot the empty dock and use it as the roll's Flat Field profile."),
         )
-        self.flat_first_btn.setVisible(self._settings.film_transport == "strip")
-        dock.addWidget(self.flat_first_btn)
+        self.strip_flat_btn.setVisible(self._settings.film_transport == "strip")
+        dock.addWidget(self.strip_flat_btn)
         self.dock_body.setVisible(False)
         cam.addWidget(self.dock_body)
         layout.addWidget(self.camera_body)
@@ -562,7 +562,7 @@ class ScanlightSidebar(QWidget):
         self.lv_btn.toggled.connect(self._on_live_view_toggled)
         self.keep_light_btn.toggled.connect(self._on_keep_light_toggled)
         self.film_choice.currentChanged.connect(self._on_film_transport_changed)
-        self.flat_first_btn.toggled.connect(self._on_flat_first_toggled)
+        self.strip_flat_btn.toggled.connect(self._on_strip_flat_toggled)
         self.eject_btn.clicked.connect(lambda _checked=False: self.controller.eject_film(self._settings.port))
         self.controller.capture_strip_finished.connect(self._on_strip_finished)
         self.scan_btn.clicked.connect(self._on_scan)
@@ -1560,11 +1560,11 @@ class ScanlightSidebar(QWidget):
 
     def _on_film_transport_changed(self, _index: int) -> None:
         self._settings = replace(self._settings, film_transport=self.film_choice.currentData())
-        self.flat_first_btn.setVisible(self._settings.film_transport == "strip")
+        self.strip_flat_btn.setVisible(self._settings.film_transport == "strip")
         self._save_settings()
 
-    def _on_flat_first_toggled(self, on: bool) -> None:
-        self._settings = replace(self._settings, flat_first=on)
+    def _on_strip_flat_toggled(self, on: bool) -> None:
+        self._settings = replace(self._settings, strip_flat=on)
         self._save_settings()
 
     @pyqtSlot(str)
@@ -2065,7 +2065,7 @@ class ScanlightSidebar(QWidget):
             end_light=(self._framing_light() or (0, 0, 0, 0)) if self.lv_btn.isChecked() or s.keep_light_on else (0, 0, 0, 0),
             advance_film=dock and s.film_transport == "next",
             whole_strip=dock and s.film_transport == "strip" and not retake,
-            flat_first=dock and s.film_transport == "strip" and s.flat_first and not retake,
+            strip_flat=dock and s.film_transport == "strip" and s.strip_flat and not retake,
             shutter_ladder=self._shutter_labels(),
         )
         self._capturing = tuple(channels) + (("IR",) if req.infrared else ()) if triplet else ()
