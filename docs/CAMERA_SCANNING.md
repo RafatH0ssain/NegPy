@@ -204,7 +204,8 @@ described above.
   not know the position of a strip that was in it before.
 - While NegPy uses the dock, the dock's S button works as Scan: it starts a scan, or stops one.
   The dock answers the press with its own exposure first, so the scan starts a few seconds
-  later. The other buttons jog the film in small steps.
+  later. The arrow buttons move the film one frame. NegPy sets `BTNMODE FRAME` and puts the
+  dock's own button mode back when it releases the dock.
 - When NegPy releases the dock, it puts back the dock's saved light mode and control mode.
 
 The dock's own pulsed light stays with Dock Connect.
