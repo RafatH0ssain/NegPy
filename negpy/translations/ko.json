@@ -2503,6 +2503,7 @@
   "Stitch Selected Frames": "선택한 프레임 연결",
   "Stitch failed: {e}": "스티치 실패: {e}",
   "Stitched composite of {value}": "{value}의 스티치 합성",
+  "Stitched composite of {value} (Trichrome)": "{value}의 스티치 합성 (삼색)",
   "Stitched {value}": "스티치된 {value}",
   "Stitches, HDR merges, trichromes and half-frame scans cannot go to the Trash.": "스티치, HDR 병합, 삼색 및 하프 프레임 스캔은 휴지통으로 이동할 수 없습니다.",
   "Stitching an already-stitched frame is not supported": "이미 스티칭된 프레임 스티칭은 지원되지 않습니다.",

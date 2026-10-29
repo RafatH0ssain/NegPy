@@ -2503,6 +2503,7 @@
   "Stitch Selected Frames": "選択したフレームをステッチする",
   "Stitch failed: {e}": "ステッチに失敗しました: {e}",
   "Stitched composite of {value}": "{value}のステッチ合成",
+  "Stitched composite of {value} (Trichrome)": "{value}のステッチ合成（トリクローム）",
   "Stitched {value}": "{value} をステッチしました",
   "Stitches, HDR merges, trichromes and half-frame scans cannot go to the Trash.": "ステッチ、HDR マージ、トリクローム、ハーフフレーム スキャンはゴミ箱に移動できません。",
   "Stitching an already-stitched frame is not supported": "すでに合成済みのフレームを再びステッチすることはできません",
