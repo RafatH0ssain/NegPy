@@ -183,11 +183,16 @@ described above.
 - NegPy uses a Scanlight first. To scan with the dock, disconnect the Scanlight.
 - The dock has no white or infrared light. A white-light preset lights red, green and blue
   together at the same level.
-- NegPy does not move the film. While NegPy uses the dock, its buttons jog the film in
-  small steps. Jog each frame into the window before you scan it.
+- Turn on **Advance Film** (the step arrow beside Retake) to scan a strip frame by frame. After
+  each Scan, the dock moves the film to the next frame. Retake does not move the film. At the
+  end of the strip, the status line asks for the next strip.
+- Insert the strip after the light status shows the dock and before you open Live View. The
+  dock then finds the first frame itself. Opening the dock's port resets the dock, so it does
+  not know the position of a strip that was in it before.
+- While NegPy uses the dock, the dock's buttons jog the film in small steps.
 - When NegPy releases the dock, it puts back the dock's saved light mode and control mode.
 
-The dock's own pulsed light and its film transport stay with Dock Connect.
+The dock's own pulsed light stays with Dock Connect.
 
 ### Sensor calibration
 

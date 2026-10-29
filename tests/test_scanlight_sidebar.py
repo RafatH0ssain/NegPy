@@ -2893,3 +2893,41 @@ def test_a_calibrated_preset_scans_without_asking(tmp_path, monkeypatch, single)
     assert asked == []
     req = w.controller.start_capture.call_args[0][0]
     assert req.shutters == ("1/60", "1/60", "1/60")
+
+
+def _dock_poll(**fields):
+    return {**_poll(usb_ok=True, usb_model="ILCE-7M4", light_detail="Lento Dock 35 (fw 1.0.224)"), "light_moves_film": True, **fields}
+
+
+def test_advance_film_shows_only_with_a_light_that_moves_film():
+    w = _sidebar()
+    assert w.advance_film_btn.isHidden()
+    w._on_poll_status(_dock_poll())
+    assert not w.advance_film_btn.isHidden()
+    w._on_poll_status(_poll(usb_ok=True, usb_model="ILCE-7M4"))  # a Scanlight
+    assert w.advance_film_btn.isHidden()
+    w._on_poll_status(_dock_poll())
+    w._set_rgb_mode(False)
+    assert w.advance_film_btn.isHidden()
+
+
+def test_advance_film_is_saved_and_restored():
+    w = _sidebar()
+    w.advance_film_btn.setChecked(True)
+    key, saved = w.controller.session.repo.save_global_setting.call_args[0]
+    assert key == "scanlight_settings" and saved["advance_film"] is True
+
+    ctrl = MagicMock()
+    ctrl.session.repo.get_global_setting.return_value = saved
+    assert ScanlightSidebar(ctrl).advance_film_btn.isChecked()
+
+
+@pytest.mark.parametrize(("moves_film", "checked", "expected"), [(True, True, True), (True, False, False), (False, True, False)])
+def test_a_scan_asks_for_the_advance_only_on_a_light_that_moves_film(tmp_path, moves_film, checked, expected):
+    w = _sidebar()
+    w._on_poll_status(_dock_poll(light_moves_film=moves_film))
+    w.advance_film_btn.setChecked(checked)
+    w.output.folder_edit.setText(str(tmp_path))
+    w.output.roll_edit.setText("Roll001")
+    w._start_capture(retake=False)
+    assert w.controller.start_capture.call_args[0][0].advance_film is expected

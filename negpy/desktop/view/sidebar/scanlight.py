@@ -226,6 +226,7 @@ class ScanlightSidebar(QWidget):
         self._settings_loaded = False  # have the live camera-setting dropdowns been populated yet?
         self._light_has_white = True  # does the connected Scanlight have a white LED? (False = v1-v3, RGB-only)
         self._light_has_ir = False  # infrared LEDs: the Big Scanlight
+        self._light_moves_film = False  # the light has a film transport: the Lento Dock
         self._capturing: tuple[str, ...] = ()  # the exposures of the capture in flight, for its status line
         self._free_exposure = False  # a built-in Trichrome preset: ISO, shutter and aperture are the operator's
         self._meter_pending = False  # the card's meter pressed with Live View closed: meter once it streams
@@ -513,10 +514,19 @@ class ScanlightSidebar(QWidget):
         )
         self.keep_light_btn.setChecked(self._settings.keep_light_on)
         self.keep_light_btn.setFixedWidth(ICON_BUTTON_WIDTH)
+        self.advance_film_btn = tool_toggle(
+            "fa5s.step-forward",
+            "",
+            tr("Advance Film: move the film to the next frame after each scan, with a Lento Dock."),
+        )
+        self.advance_film_btn.setChecked(self._settings.advance_film)
+        self.advance_film_btn.setFixedWidth(ICON_BUTTON_WIDTH)
+        self.advance_film_btn.setVisible(False)  # shown by the light poll when the light moves film
         actions = QHBoxLayout()
         actions.addWidget(self.lv_btn, 1)
         actions.addWidget(self.retake_btn)
         actions.addWidget(self.keep_light_btn)
+        actions.addWidget(self.advance_film_btn)
         foot.addLayout(actions)
         self.scan_btn = QPushButton(icon_text(tr("Scan")))
         self.scan_btn.setObjectName("scan_btn")
@@ -533,6 +543,7 @@ class ScanlightSidebar(QWidget):
         self.light_btn.clicked.connect(self._on_light_clicked)
         self.lv_btn.toggled.connect(self._on_live_view_toggled)
         self.keep_light_btn.toggled.connect(self._on_keep_light_toggled)
+        self.advance_film_btn.toggled.connect(self._on_advance_film_toggled)
         self.scan_btn.clicked.connect(self._on_scan)
         self.retake_btn.clicked.connect(self._on_retake)
         self.preset_combo.activated.connect(self._on_preset_selected)
@@ -1526,6 +1537,10 @@ class ScanlightSidebar(QWidget):
         self._settings = replace(self._settings, keep_light_on=on)
         self._save_settings()
 
+    def _on_advance_film_toggled(self, on: bool) -> None:
+        self._settings = replace(self._settings, advance_film=on)
+        self._save_settings()
+
     @pyqtSlot(str)
     def _on_live_view_unsupported(self, reason: str) -> None:
         """No stream was started because the body advertises none (issue #621). Not an error:
@@ -2021,6 +2036,7 @@ class ScanlightSidebar(QWidget):
             infrared=s.infrared and rgb and self._light_has_ir,
             capture_delay_s=s.capture_delay_s,
             end_light=(self._framing_light() or (0, 0, 0, 0)) if self.lv_btn.isChecked() or s.keep_light_on else (0, 0, 0, 0),
+            advance_film=rgb and s.advance_film and self._light_moves_film,
         )
         self._capturing = tuple(channels) + (("IR",) if req.infrared else ()) if triplet else ()
         self.set_scanning(True)
@@ -2158,6 +2174,8 @@ class ScanlightSidebar(QWidget):
         self._light_verified = status["light_ok"]
         self._light_has_white = status.get("light_has_white", True)  # RGB-only Scanlights (v1-v3) have no white LED
         self._light_has_ir = bool(status.get("light_has_ir", False))
+        self._light_moves_film = bool(status.get("light_moves_film", False))
+        self.advance_film_btn.setVisible(self._rgb_mode and self._light_moves_film)
         self._camera_has_preview = bool(status.get("camera_preview", True))
         self._camera_has_config = bool(status.get("camera_config", True))
         # An RGB triplet must write shutter/ISO/aperture onto the body. A camera whose driver
@@ -2419,6 +2437,7 @@ class ScanlightSidebar(QWidget):
         self._rgb_mode = on
         self.light_body.setVisible(on)
         self.keep_light_btn.setVisible(on)
+        self.advance_film_btn.setVisible(on and self._light_moves_film)
         self._rgb_hint.setVisible(not on)
         self.cards_changed.emit()
         if not on:

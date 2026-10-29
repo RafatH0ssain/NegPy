@@ -67,6 +67,7 @@ class CaptureRequest:
     infrared: bool = False  # end the frame with an infrared exposure at shutter_ir
     capture_delay_s: float = 0.0  # seconds to hold the first exposure; Stop ends the wait
     end_light: tuple[int, int, int, int] = (0, 0, 0, 0)  # r, g, b, w left lit after a successful frame; zeros = off
+    advance_film: bool = False  # after a Scan, move the film to the next frame on a light that has a film transport
 
 
 @dataclass(frozen=True)
@@ -312,7 +313,7 @@ class CaptureWorker(QObject):
                     shutter=(req.shutters[0] or None),
                     cancel=self._cancel,
                 )
-                self.finished.emit([path])
+                self._finish_frame(req, [path])
                 self._report_clipping(path)
                 return
 
@@ -375,7 +376,7 @@ class CaptureWorker(QObject):
                     cancel=self._cancel,
                     end_light=visible_end,
                 )
-                self.finished.emit(_with_ir([path]))
+                self._finish_frame(req, _with_ir([path]))
                 self._report_clipping(path)
                 return
 
@@ -393,7 +394,7 @@ class CaptureWorker(QObject):
             if req.single_capture:  # one narrowband exposure, imported as an ordinary single RAW
                 self.status.emit(tr("Capturing…"))
                 path = service.capture_rgb_single(settings, cancel=self._cancel, end_light=visible_end)
-                self.finished.emit(_with_ir([path]))
+                self._finish_frame(req, _with_ir([path]))
                 self._report_clipping(path)
                 return
 
@@ -420,7 +421,7 @@ class CaptureWorker(QObject):
                             end_light=visible_end if [ch] == last else None,
                         )
                     )
-                self.finished.emit(_with_ir(paths))
+                self._finish_frame(req, _with_ir(paths))
                 return
 
             self.status.emit(tr("Capturing R / G / B…"))
@@ -438,7 +439,7 @@ class CaptureWorker(QObject):
                 end_light=visible_end,
             )
 
-            self.finished.emit(_with_ir(result.paths))
+            self._finish_frame(req, _with_ir(result.paths))
         except Exception as e:
             self._cleanup_partial_frame(req)  # keep the folder a clean multiple of 3 for NegPy's grouper
             if self._cancel.is_set():
@@ -449,6 +450,24 @@ class CaptureWorker(QObject):
             self._close_camera()  # discard a possibly-broken held session
             logger.exception("capture failed")
             self.error.emit(str(e))
+
+    def _finish_frame(self, req: CaptureRequest, paths: list) -> None:
+        """Report the frame, then move the film when asked. The import starts at once; the next
+        capture waits on this thread until the film is in place. A Retake never moves the film."""
+        self.finished.emit(paths)
+        if not req.advance_film or req.is_retake:
+            return
+        try:
+            advance = getattr(self._ensure_light(req.port), "advance_frame", None)
+            if advance is None:
+                return
+            self.status.emit(tr("Moving the film to the next frame…"))
+            at_end = advance() is None
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("film advance failed")
+            self.status.emit(tr("The film did not move: {error}. Move it with the dock's buttons.", error=exc))
+            return
+        self.status.emit(tr("End of the strip. Insert the next strip.") if at_end else tr("The next frame is in place."))
 
     def _report_clipping(self, path: str) -> None:
         """Emit `clipped` when a single-file capture clips as Meter judges a probe. Runs after
@@ -546,6 +565,7 @@ class CaptureWorker(QObject):
             "light_detail": "not connected",
             "light_has_white": True,
             "light_has_ir": False,
+            "light_moves_film": False,
             "usb_claimed_elsewhere": False,
             # Advertised abilities of the last body opened. Optimistic until a session has been
             # opened: never grey a control out on an uninspected body.
@@ -612,9 +632,11 @@ class CaptureWorker(QObject):
         except Exception:
             logger.exception("camera poll failed")
         try:
-            detail, has_white, has_ir = self._ensure_light(port).describe()
+            light = self._ensure_light(port)
+            detail, has_white, has_ir = light.describe()
             status["light_ok"], status["light_detail"] = True, detail
             status["light_has_white"], status["light_has_ir"] = has_white, has_ir
+            status["light_moves_film"] = hasattr(light, "advance_frame")
         except Exception:
             pass
         self.poll_status.emit(status)

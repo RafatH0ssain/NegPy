@@ -776,6 +776,7 @@ Scans with a camera on a copy stand, connected over USB in **PC Remote** mode (m
 *   **Scan** shoots the next frame and imports it; **Retake** (the redo arrow) shoots the last frame again. When a scan clips, the status line tells you how much of the picture clipped. In the Live View window, `Space` or `S` scans and `R` retakes. With a Scanlight, **R**, **G**, **B** and **IR** pick which exposures Retake repeats.
 *   **Capture Delay**: waits before the first exposure, so a shaky table can settle.
 *   **Keep Light On** (the bulb): keeps the Scanlight lit after each scan, so you can frame the next shot.
+*   **Advance Film** (the step arrow): with a Lento Dock, moves the film to the next frame after each scan. Retake does not move the film.
 
 <!-- panel:scan_light -->
 ### Preset

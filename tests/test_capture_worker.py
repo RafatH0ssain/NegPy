@@ -962,3 +962,106 @@ def test_a_failed_clipping_check_keeps_the_frame(tmp_path, monkeypatch):
     worker._report_clipping(str(tmp_path / "Roll01_Frame001.ARW"))
 
     assert errors == [] and clipped == []
+
+
+class _RawCamera:
+    def capture(self, out_path: str, shutter=None, iso=None, aperture=None) -> str:
+        path = os.path.splitext(out_path)[0] + ".ARW"
+        with open(path, "wb") as raw:
+            raw.truncate(8 * 1024 * 1024)
+        return path
+
+
+class FakeDock(FakeLight):
+    """A light with a film transport, as the Lento Dock driver has: `advance_frame` gives the
+    frame index, None at the end of the strip, or raises."""
+
+    def __init__(self, events: list, result=0) -> None:
+        self.events, self.result = events, result
+
+    def advance_frame(self):
+        self.events.append("advance")
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+def _scan_one_frame(tmp_path, monkeypatch, light, **request):
+    worker = CaptureWorker()
+    monkeypatch.setattr(worker, "_acquire_camera", lambda: _RawCamera())
+    monkeypatch.setattr(worker, "_ensure_light", lambda _port: light)
+    monkeypatch.setattr(worker, "_report_clipping", lambda _path: None)
+    seen = {"status": [], "error": []}
+    worker.finished.connect(lambda _paths: light.events.append("finished"))
+    worker.status.connect(seen["status"].append)
+    worker.error.connect(seen["error"].append)
+    worker.run_capture(
+        CaptureRequest(
+            roll_name="Roll01",
+            frame_number=1,
+            output_folder=str(tmp_path),
+            levels=(200, 180, 255),
+            settle_s=0,
+            single_capture=True,
+            **request,
+        )
+    )
+    return seen
+
+
+def test_advance_film_moves_the_film_after_the_frame_is_reported(tmp_path, monkeypatch):
+    events: list = []
+    seen = _scan_one_frame(tmp_path, monkeypatch, FakeDock(events), advance_film=True)
+    assert events == ["finished", "advance"]
+    assert seen["status"][-1] == "The next frame is in place."
+    assert seen["error"] == []
+
+
+def test_advance_film_reports_the_end_of_the_strip(tmp_path, monkeypatch):
+    events: list = []
+    seen = _scan_one_frame(tmp_path, monkeypatch, FakeDock(events, result=None), advance_film=True)
+    assert events == ["finished", "advance"]
+    assert seen["status"][-1] == "End of the strip. Insert the next strip."
+
+
+@pytest.mark.parametrize("request_fields", [{"advance_film": False}, {"advance_film": True, "is_retake": True}])
+def test_the_film_stays_without_advance_film_and_on_retake(tmp_path, monkeypatch, request_fields):
+    events: list = []
+    _scan_one_frame(tmp_path, monkeypatch, FakeDock(events), **request_fields)
+    assert events == ["finished"]
+
+
+def test_a_failed_advance_keeps_the_frame_and_says_what_to_do(tmp_path, monkeypatch):
+    events: list = []
+    seen = _scan_one_frame(tmp_path, monkeypatch, FakeDock(events, result=TimeoutError("no FRAMEAT")), advance_film=True)
+    assert events == ["finished", "advance"]
+    assert seen["error"] == []  # the frame is on disk: an error would read as a failed capture
+    assert seen["status"][-1] == "The film did not move: no FRAMEAT. Move it with the dock's buttons."
+    assert (tmp_path / "Roll01_Frame001.ARW").exists()
+
+
+def test_a_light_without_a_film_transport_ignores_advance_film(tmp_path, monkeypatch):
+    class Light(FakeLight):
+        events: list = []
+
+    light = Light()
+    seen = _scan_one_frame(tmp_path, monkeypatch, light, advance_film=True)
+    assert light.events == ["finished"]
+    assert seen["error"] == []
+
+
+def test_the_poll_reports_a_light_that_moves_film(monkeypatch):
+    import negpy.desktop.workers.capture_worker as capture_worker_module
+
+    class Dock(FakeDock):
+        def describe(self):
+            return "Lento Dock 35 (fw 1.0.224)", False, False
+
+    worker = CaptureWorker()
+    monkeypatch.setattr(capture_worker_module, "list_cameras", lambda: [])
+    monkeypatch.setattr(worker, "_ensure_light", lambda _port: Dock([]))
+    polled = []
+    worker.poll_status.connect(polled.append)
+    worker.poll_connection("")
+    assert polled[-1]["light_ok"] and polled[-1]["light_moves_film"]
+    assert polled[-1]["light_detail"] == "Lento Dock 35 (fw 1.0.224)"
