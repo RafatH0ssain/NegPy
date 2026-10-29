@@ -31,6 +31,7 @@ from negpy.desktop.settings_catalog import (
     PAPER_FIELDS,
     TONE_FIELDS,
     frame_card_rows,
+    roll_card_rows,
 )
 from negpy.desktop.view.widgets.granular_settings_dialog import open_apply_dialog
 from negpy.desktop.view.widgets.tab_header import TabHeader
@@ -473,6 +474,7 @@ class ControlsPanel(QWidget):
         self.auto_mirror_btn = header.add_lead_toggle(icon, auto.plain_tooltip)
         self.auto_mirror_btn.setMenu(auto.choice_menu)
         self.auto_mirror_btn.setChecked(auto.isChecked())
+        auto.mirror_right_click(self.auto_mirror_btn)
         auto.toggled.connect(self.auto_mirror_btn.setChecked)
 
     @staticmethod
@@ -568,15 +570,18 @@ class ControlsPanel(QWidget):
     def _show_card_menu(self, key: str, section: CollapsibleSection, pos) -> None:
         menu = QMenu(self)
         menu.setToolTipsVisible(True)
-        if key in dict(self._roll_sections()):
+        cards = _SECTION_CARDS.get(key, (key,))
+        roll_card = key in dict(self._roll_sections())
+        rows = roll_card_rows(*cards) if roll_card else frame_card_rows(key)
+        copy = menu.addAction(tr("Copy Card Settings"))
+        copy.setToolTip(tr("Copy this card alone; Paste then offers only its settings"))
+        copy.setEnabled(bool(rows))
+        copy.triggered.connect(lambda: self.controller.session.copy_card_settings(rows))
+        if roll_card:
             undo = menu.addAction(label_with_shortcut(tr("Undo Apply to Roll"), "undo_roll_push"))
             undo.setToolTip(tr("Give the roll back the values it had before the last Roll push from this frame"))
-            undo.setEnabled(self.controller.can_undo_roll_push(_SECTION_CARDS.get(key, (key,))))
+            undo.setEnabled(self.controller.can_undo_roll_push(cards))
             undo.triggered.connect(self.controller.undo_roll_push)
-        else:
-            copy = menu.addAction(tr("Copy Card Settings"))
-            copy.setToolTip(tr("Copy this card alone; Paste then offers only its settings"))
-            copy.triggered.connect(lambda: self.controller.session.copy_card_settings(frame_card_rows(key)))
         menu.exec(section.toggle_button.mapToGlobal(pos))
 
     def apply_shortcut_tooltips(self) -> None:

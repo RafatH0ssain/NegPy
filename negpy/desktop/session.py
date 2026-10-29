@@ -345,6 +345,11 @@ class AppState:
     flat_peek: bool = False
     # Transient: preview is showing the decoded source as loaded, un-inverted.
     negative_peek: bool = False
+    # Transient: preview is printing the frame on the roll average, with average_peek_axes on.
+    average_peek: bool = False
+    average_peek_axes: dict = field(default_factory=dict)
+    # "roll" while a scene frame peeks at the roll's average instead of its scene's.
+    average_peek_scope: Optional[str] = None
     # Transient: preview is showing the camera's own embedded preview, as a reference.
     embedded_peek: bool = False
     # Transient: preview is showing the selected Flat Field profile's self-check.
@@ -442,11 +447,15 @@ def composite_kind(asset: Dict[str, Any]) -> str:
     return ""
 
 
+#: Part rows a stitch tooltip lists before it folds the rest into "+N more".
+STITCH_TOOLTIP_PARTS = 8
+
+
 def composite_summary(asset: Dict[str, Any]) -> str:
-    """One tooltip line naming what a frame is built from. Empty for a plain frame."""
+    """Tooltip text naming what a frame is built from. Empty for a plain frame."""
     kind = composite_kind(asset)
     if kind == "stitch":
-        return tr("Stitched composite of {value}", value=count_of(len(asset["stitch_paths"]) + 1, "frame"))
+        return _stitch_summary(asset)
     if kind == "hdr":
         return tr("HDR merge of {value}", value=count_of(len(hdr_frame_paths(asset)), "exposure"))
     if kind == "rgb":
@@ -456,6 +465,21 @@ def composite_summary(asset: Dict[str, Any]) -> str:
     if kind == "diptych":
         return tr("Diptych: both halves, each with its own edit")
     return ""
+
+
+def _stitch_summary(asset: Dict[str, Any]) -> str:
+    """The part count, then one file name per part. A Trichrome part shows by its red file only."""
+    parts = [asset["path"], *asset["stitch_paths"]]
+    count = count_of(len(parts), "frame")
+    if any(green and blue for green, blue in asset.get("stitch_triplets") or ()):
+        header = tr("Stitched composite of {value} (Trichrome)", value=count)
+    else:
+        header = tr("Stitched composite of {value}", value=count)
+    shown = parts if len(parts) <= STITCH_TOOLTIP_PARTS else parts[: STITCH_TOOLTIP_PARTS - 1]
+    lines = [header, *(f"  {os.path.basename(p)}" for p in shown)]
+    if len(shown) < len(parts):
+        lines.append("  " + tr("+{value} more", value=len(parts) - len(shown)))
+    return "\n".join(lines)
 
 
 class AssetListModel(QAbstractListModel):
@@ -1559,9 +1583,44 @@ class DesktopSessionManager(QObject):
                 else:
                     f.pop(key, None)
 
+    def _stamp_averages(self, hashes: Optional[Collection[str]] = None) -> bool:
+        """Marks each loaded frame (or each of *hashes*) that uses the roll average, ``average`` "on"
+        or "outlier", for the Film Strip. True when a mark changed."""
+        files = [f for f in self.state.uploaded_files if hashes is None or f["hash"] in hashes]
+        saved = self.repo.load_file_settings_many([f["hash"] for f in files])
+        # A frame with no saved edit rides an average only through the roll's Use Average default.
+        defaults = rolls.roll_defaults(self.repo, self.state.active_roll_id) if self.state.active_roll_id else {}
+        unsaved_rides = any(rolls.config_value(defaults[k]) for k in rolls.card_fields("baseline") if k in defaults)
+        changed = False
+        for f in files:
+            if f["hash"] == self.state.current_file_hash:
+                process = self.state.config.process
+            elif f["hash"] in saved:
+                process = saved[f["hash"]].process
+            elif unsaved_rides:
+                process = self.config_for_asset(f).process
+            else:
+                process = None
+            mark = None
+            if process is not None and (process.use_luma_average or process.use_color_average or process.use_cast_average):
+                mark = "outlier" if rolls.frame_is_outlier(self.repo, process, f["hash"]) else "on"
+            if mark != f.get("average"):
+                changed = True
+                if mark:
+                    f["average"] = mark
+                else:
+                    f.pop("average", None)
+        return changed
+
+    def refresh_average_marks(self, hashes: Optional[Collection[str]] = None) -> None:
+        if self._stamp_averages(hashes):
+            self.asset_model.refresh()
+            self.files_changed.emit()
+
     def refresh_scene_marks(self) -> None:
         """Re-reads the active roll's scenes onto the loaded frames after a scene edit."""
         self._stamp_scenes()
+        self._stamp_averages()
         self.asset_model.refresh()
         self.files_changed.emit()
 
@@ -1719,7 +1778,12 @@ class DesktopSessionManager(QObject):
             # even when the multi-selection was built without it (a Ctrl-toggle range).
             indices = set(self.state.selected_indices)
             indices.add(self.state.selected_file_idx)
-            target_indices = sorted(indices)
+            # Number visible, selected frames in Film Strip display order; a selected
+            # frame a filter hid stays a target, after the visible ones, in index order.
+            visible = self.asset_model.visible_actual_indices_ordered()
+            visible_set = set(visible)
+            target_indices = [i for i in visible if i in indices]
+            target_indices += sorted(i for i in indices if i not in visible_set)
         if skip_rejected:
             target_indices = [
                 i for i in target_indices if 0 <= i < len(self.state.uploaded_files) and not self.state.uploaded_files[i].get("excluded")
@@ -1928,6 +1992,7 @@ class DesktopSessionManager(QObject):
             if self.state.current_file_hash:
                 self.repo.save_file_settings(self.state.current_file_hash, config, file_path=self.state.current_file_path or "")
                 self.settings_saved.emit()
+                self.refresh_average_marks({self.state.current_file_hash})
 
         if render:
             self.state_changed.emit()
@@ -2356,6 +2421,7 @@ class DesktopSessionManager(QObject):
             f["keeper"] = m == "keeper"
             f["excluded"] = m == "excluded"
         self._stamp_scenes()
+        self._stamp_averages()
 
         self.asset_model.refresh()
         self.files_changed.emit()
@@ -2403,6 +2469,7 @@ class DesktopSessionManager(QObject):
             m = marks.get(unforked_hash(asset["hash"]))
             self.state.uploaded_files[i] = {**asset, "keeper": m == "keeper", "excluded": m == "excluded"}
         self._stamp_scenes()
+        self._stamp_averages()
         self.asset_model.refresh()
         self.files_changed.emit()
         self._persist_session()
@@ -2429,6 +2496,7 @@ class DesktopSessionManager(QObject):
         self.state.selected_file_idx = shifted(self.state.selected_file_idx)
         self.state.selected_indices = [shifted(i) for i in self.state.selected_indices]
         self._stamp_scenes()
+        self._stamp_averages()
         self.asset_model.refresh()
         self.files_changed.emit()
         self._persist_session()

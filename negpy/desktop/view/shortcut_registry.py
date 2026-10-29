@@ -81,6 +81,7 @@ REGISTRY: dict[str, ShortcutEntry] = {
     "open_tools_menu": ShortcutEntry("", tr("Open the Tools menu: every canvas tool"), tr("Tools")),
     "toggle_flat_peek": ShortcutEntry("M", tr("Peek flat scan (digital intermediate); hold to peek only while down"), tr("Tools")),
     "toggle_negative_peek": ShortcutEntry("N", tr("Peek negative (source as loaded); hold to peek only while down"), tr("Tools")),
+    "toggle_average_peek": ShortcutEntry("U", tr("Peek the roll average; hold to peek only while down"), tr("Tools")),
     "toggle_embedded_peek": ShortcutEntry("P", tr("Peek the camera's embedded preview; hold to peek only while down"), tr("Tools")),
     "toggle_zones": ShortcutEntry("Shift+Z", tr("Adams zone overlay"), tr("Tools")),
     "toggle_clipping_overlay": ShortcutEntry("", tr("Clipping Overlay: paper black and paper white on the frame"), tr("Tools")),

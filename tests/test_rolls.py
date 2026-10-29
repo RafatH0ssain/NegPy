@@ -58,6 +58,7 @@ from negpy.services.assets.rolls import (
     set_frame_override,
     set_roll_defaults,
     set_roll_normalization,
+    frame_is_outlier,
     unfork_edit,
     unforked_hash,
     virtual_rolls,
@@ -739,7 +740,46 @@ class TestRollNormalization:
 
         data = roll_normalization(repo, roll_id)
 
-        assert data == {"floors": (0.1, 0.1, 0.1), "ceils": (0.9, 0.9, 0.9), "cast": (0.01, 0.0, -0.01), "axis": None, "outliers": ()}
+        assert data == {
+            "floors": (0.1, 0.1, 0.1),
+            "ceils": (0.9, 0.9, 0.9),
+            "cast": (0.01, 0.0, -0.01),
+            "axis": None,
+            "outliers": (),
+            "frames": None,
+        }
+
+    def test_records_the_measured_frames(self):
+        repo = _repo()
+        roll_id = create_virtual_roll(repo, "Portra", [])
+        set_roll_normalization(repo, roll_id, (0.1,) * 3, (0.9,) * 3, frames=("h1", "h2"))
+
+        assert roll_normalization(repo, roll_id)["frames"] == ("h1", "h2")
+
+    def test_an_outlier_riding_the_roll_baseline_reads_as_one(self):
+        repo = _repo()
+        roll_id = create_virtual_roll(repo, "Portra", [])
+        set_roll_normalization(repo, roll_id, (0.1,) * 3, (0.9,) * 3, outliers=("h1",))
+        process = ProcessConfig(baseline_source=f"roll:{roll_id}")
+
+        assert frame_is_outlier(repo, process, "h1")
+        assert frame_is_outlier(repo, process, "h1#roll:x")
+        assert not frame_is_outlier(repo, process, "h2")
+        assert not frame_is_outlier(repo, ProcessConfig(baseline_source="frame:a.tif"), "h1")
+
+    def test_a_scene_frame_reads_its_scene_unless_it_chose_the_roll(self):
+        from negpy.services.assets.rolls import average_scope, frame_saved_baseline
+
+        repo = _repo()
+        roll_id = create_virtual_roll(repo, "Portra", [])
+        sid = create_scene(repo, roll_id, "Woods", ["h1"])
+        set_roll_normalization(repo, roll_id, (0.1,) * 3, (0.9,) * 3)
+        set_scene_normalization(repo, roll_id, sid, (0.2,) * 3, (0.8,) * 3)
+
+        assert frame_saved_baseline(repo, roll_id, "h1")[1] == f"scene:{sid}"
+        assert frame_saved_baseline(repo, roll_id, "h1", "roll")[1] == f"roll:{roll_id}"
+        assert average_scope(ProcessConfig(baseline_source=f"roll:{roll_id}")) == "roll"
+        assert average_scope(ProcessConfig(baseline_source=f"scene:{sid}")) is None
 
     def test_defaults_cast_to_zero(self):
         repo = _repo()
@@ -837,8 +877,11 @@ class TestScenes:
             "ceils": (0.7, 0.8, 0.9),
             "axis": axis,
             "outliers": ("a",),
+            "frames": None,
         }
         assert roll_normalization(repo, roll_id) is None
+        set_scene_normalization(repo, roll_id, sid, (0.1, 0.2, 0.3), (0.7, 0.8, 0.9), frames=("a",))
+        assert scene_normalization(repo, roll_id, sid)["frames"] == ("a",)
 
     def test_roll_record_keeps_its_outliers_and_an_old_record_has_none(self):
         repo, roll_id = self._roll()
