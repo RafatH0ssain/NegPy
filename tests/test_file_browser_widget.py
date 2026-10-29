@@ -321,7 +321,7 @@ def test_apply_dialog_check_all_and_none(qapp):
     assert not any(box.isChecked() for box in dlg._all_boxes())
     assert not dlg.apply_btn.isEnabled()
     dlg._set_all_checked(True)
-    # unchanged rows stay hidden and unchecked until "Show unchanged settings"
+    # unchanged rows stay hidden and unchecked until "Show Defaults"
     assert {r.label for r in dlg.selected()} == {"Print Density", "Crop"}
     assert dlg.apply_btn.isEnabled()
 
