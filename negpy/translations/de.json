@@ -2505,6 +2505,7 @@
   "Stitch Selected Frames": "Gewählte Bilder stitchen",
   "Stitch failed: {e}": "Stitchen fehlgeschlagen: {e}",
   "Stitched composite of {value}": "Gestitchtes Komposit aus {value}",
+  "Stitched composite of {value} (Trichrome)": "Gestitchtes Komposit aus {value} (Trichrome)",
   "Stitched {value}": "{value} gestitcht",
   "Stitches, HDR merges, trichromes and half-frame scans cannot go to the Trash.": "Stitches, HDR-Zusammenführungen, Trichrome und Halbformat-Scans können nicht in den Papierkorb.",
   "Stitching an already-stitched frame is not supported": "Ein bereits gestitchtes Bild kann nicht erneut gestitcht werden",

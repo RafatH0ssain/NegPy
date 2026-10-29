@@ -2505,6 +2505,7 @@
   "Stitch Selected Frames": "拼接选定画面",
   "Stitch failed: {e}": "拼接失败：{e}",
   "Stitched composite of {value}": "{value}的拼接合成",
+  "Stitched composite of {value} (Trichrome)": "{value}的拼接合成（三色扫描）",
   "Stitched {value}": "已拼接 {value}",
   "Stitches, HDR merges, trichromes and half-frame scans cannot go to the Trash.": "拼接、HDR 合并、三色扫描和半格扫描不能移到废纸篓。",
   "Stitching an already-stitched frame is not supported": "不支持再次拼接已拼接画面",
