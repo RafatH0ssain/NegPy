@@ -500,9 +500,19 @@ class ShortcutManager:
             "scanlight_keep_light_on": lambda: (
                 right.scanlight_sidebar.keep_light_btn.toggle() if not right.scanlight_sidebar.keep_light_btn.isHidden() else None
             ),
-            "scanlight_advance_film": lambda: (
-                right.scanlight_sidebar.advance_film_btn.toggle() if not right.scanlight_sidebar.advance_film_btn.isHidden() else None
+            "lento_film_off": lambda: (
+                right.scanlight_sidebar.film_choice.setCurrentIndex(0) if not right.scanlight_sidebar.dock_body.isHidden() else None
             ),
+            "lento_film_next": lambda: (
+                right.scanlight_sidebar.film_choice.setCurrentIndex(1) if not right.scanlight_sidebar.dock_body.isHidden() else None
+            ),
+            "lento_film_strip": lambda: (
+                right.scanlight_sidebar.film_choice.setCurrentIndex(2) if not right.scanlight_sidebar.dock_body.isHidden() else None
+            ),
+            "lento_flat_first": lambda: (
+                right.scanlight_sidebar.flat_first_btn.toggle() if not right.scanlight_sidebar.flat_first_btn.isHidden() else None
+            ),
+            "lento_eject": lambda: right.scanlight_sidebar.eject_btn.click() if not right.scanlight_sidebar.dock_body.isHidden() else None,
             "scanlight_infrared": lambda: (
                 right.scanlight_sidebar.ir_toggle.toggle() if not right.scanlight_sidebar._ir_exposure_widget.isHidden() else None
             ),

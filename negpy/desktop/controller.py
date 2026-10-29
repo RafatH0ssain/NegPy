@@ -670,6 +670,7 @@ class AppController(QObject):
     scan_meter_error = pyqtSignal(str)
     capture_light_requested = pyqtSignal(int, int, int, int, str)
     capture_requested = pyqtSignal(CaptureRequest)
+    capture_eject_requested = pyqtSignal(str)  # light port
     capture_light_set = pyqtSignal(int, int, int, int)
     capture_progress = pyqtSignal(float)
     capture_countdown = pyqtSignal(int)  # seconds left of the Capture Delay; 0 when the shot starts
@@ -683,6 +684,7 @@ class AppController(QObject):
     capture_cancelled = pyqtSignal()
     capture_error = pyqtSignal(str)
     capture_status = pyqtSignal(str)
+    capture_strip_finished = pyqtSignal(int, bool)  # frames scanned, the strip ran to its end
     live_view_requested = pyqtSignal(LiveViewRequest)
     live_view_stop_requested = pyqtSignal()
     camera_session_close_requested = pyqtSignal()
@@ -1210,6 +1212,7 @@ class AppController(QObject):
         self.scan_worker.meter_error.connect(self.scan_meter_error.emit)
         self.capture_light_requested.connect(self.capture_worker.set_light)
         self.capture_requested.connect(self.capture_worker.run_capture)
+        self.capture_eject_requested.connect(self.capture_worker.eject_film)
         self.capture_worker.light_set.connect(self.capture_light_set.emit)
         self.capture_worker.progress.connect(self.capture_progress.emit)
         self.capture_worker.countdown.connect(self.capture_countdown.emit)
@@ -1223,6 +1226,8 @@ class AppController(QObject):
         self.capture_worker.cancelled.connect(self.capture_cancelled.emit)
         self.capture_worker.error.connect(self.capture_error.emit)
         self.capture_worker.status.connect(self.capture_status.emit)
+        self.capture_worker.flat_captured.connect(self._on_capture_flat)
+        self.capture_worker.strip_finished.connect(self.capture_strip_finished.emit)
         self.live_view_requested.connect(self.capture_worker.start_live_view)
         self.live_view_stop_requested.connect(self.capture_worker.stop_live_view)
         self.camera_session_close_requested.connect(self.capture_worker.close_camera_session)
@@ -7569,6 +7574,11 @@ class AppController(QObject):
         self.capture_worker.arm()
         self.capture_requested.emit(req)
 
+    def eject_film(self, port: str) -> None:
+        """Move the strip out of a light with a film transport, on the capture thread."""
+        self._ensure_capture_thread()
+        self.capture_eject_requested.emit(port)
+
     def cancel_capture(self) -> None:
         self.capture_worker.cancel()
 
@@ -7631,6 +7641,12 @@ class AppController(QObject):
         defaults = rolls.roll_defaults(self.session.repo, roll_id)
         if not all(key in defaults and rolls.same_value(value, defaults[key]) for key, value in wanted.items()):
             rolls.set_roll_defaults(self.session.repo, roll_id, **wanted)
+
+    def _on_capture_flat(self, path: str) -> None:
+        """A strip's bare-light reference: save it as the roll's Flat Field profile before its frames import."""
+        req = getattr(self, "_last_capture_req", None)
+        roll = req.roll_name if req is not None else os.path.splitext(os.path.basename(path))[0]
+        self.save_flatfield_profile(f"{roll} (Lento Dock)", path)
 
     def _on_capture_finished(self, paths: list) -> None:
         """Feed the captured frame(s) into NegPy. An RGB triplet → RGB-Scan, C-41; a single-capture

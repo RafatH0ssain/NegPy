@@ -7,6 +7,7 @@ aligns + merges + inverts them.
 """
 
 from negpy.kernel.system.i18n import mark, tr
+from negpy.kernel.system.text import count_of
 
 import json
 import os
@@ -53,6 +54,7 @@ from negpy.desktop.view.styles.templates import (
 )
 from negpy.desktop.view.styles.theme import THEME
 from negpy.desktop.view.widgets.sliders import CompactSlider, LogSlider, SliderGroup
+from negpy.desktop.view.widgets.segmented_choice import SegmentedChoice
 from negpy.desktop.view.widgets.step_combo import StepCombo
 from negpy.infrastructure import simulated
 from negpy.infrastructure.capture.gphoto import default_settings_path
@@ -227,6 +229,7 @@ class ScanlightSidebar(QWidget):
         self._light_has_white = True  # does the connected Scanlight have a white LED? (False = v1-v3, RGB-only)
         self._light_has_ir = False  # infrared LEDs: the Big Scanlight
         self._light_moves_film = False  # the light has a film transport: the Lento Dock
+        self._strip_running = False  # a Whole Strip scan: frames finish one by one, the strip at the end
         self._capturing: tuple[str, ...] = ()  # the exposures of the capture in flight, for its status line
         self._free_exposure = False  # a built-in Trichrome preset: ISO, shutter and aperture are the operator's
         self._meter_pending = False  # the card's meter pressed with Live View closed: meter once it streams
@@ -363,6 +366,30 @@ class ScanlightSidebar(QWidget):
         self.capture_delay_slider.setValue(self._settings.capture_delay_s)
         self.capture_delay_slider.setToolTip(tr("Wait this long after Scan or Retake before the shot, so a shaky table can settle."))
         cam.addWidget(self.capture_delay_slider)
+        # A light with a film transport (the Lento Dock): shown by the light poll.
+        self.dock_body = QWidget()
+        self.dock_body.setObjectName("collapsible_content_body")
+        dock = QVBoxLayout(self.dock_body)
+        dock.setContentsMargins(0, 0, 0, 0)
+        dock.setSpacing(THEME.space_md)
+        self.film_choice = SegmentedChoice(
+            (("fa5s.pause", tr("Off")), ("fa5s.step-forward", tr("Next Frame")), ("fa5s.fast-forward", tr("Whole Strip"))),
+            tr("What the Lento Dock does with the film when you click Scan."),
+            data=("off", "next", "strip"),
+        )
+        self.film_choice.setCurrentIndex(max(0, self.film_choice.findData(self._settings.film_transport)))
+        self.eject_btn = icon_button("fa5s.eject", tr("Eject: move the strip out of the dock."))
+        dock.addLayout(field_row(tr("Film"), self.film_choice, self.eject_btn))
+        self.flat_first_btn = labeled_toggle(
+            "fa5s.vector-square",
+            tr("Flat Field First"),
+            self._settings.flat_first,
+            tr("Before the strip, shoot the bare light and use it as the roll's Flat Field profile."),
+        )
+        self.flat_first_btn.setVisible(self._settings.film_transport == "strip")
+        dock.addWidget(self.flat_first_btn)
+        self.dock_body.setVisible(False)
+        cam.addWidget(self.dock_body)
         layout.addWidget(self.camera_body)
 
         # Scanlight only: _set_rgb_mode hides it for white-light scanning.
@@ -514,19 +541,10 @@ class ScanlightSidebar(QWidget):
         )
         self.keep_light_btn.setChecked(self._settings.keep_light_on)
         self.keep_light_btn.setFixedWidth(ICON_BUTTON_WIDTH)
-        self.advance_film_btn = tool_toggle(
-            "fa5s.step-forward",
-            "",
-            tr("Advance Film: move the film to the next frame after each scan, with a Lento Dock."),
-        )
-        self.advance_film_btn.setChecked(self._settings.advance_film)
-        self.advance_film_btn.setFixedWidth(ICON_BUTTON_WIDTH)
-        self.advance_film_btn.setVisible(False)  # shown by the light poll when the light moves film
         actions = QHBoxLayout()
         actions.addWidget(self.lv_btn, 1)
         actions.addWidget(self.retake_btn)
         actions.addWidget(self.keep_light_btn)
-        actions.addWidget(self.advance_film_btn)
         foot.addLayout(actions)
         self.scan_btn = QPushButton(icon_text(tr("Scan")))
         self.scan_btn.setObjectName("scan_btn")
@@ -543,7 +561,10 @@ class ScanlightSidebar(QWidget):
         self.light_btn.clicked.connect(self._on_light_clicked)
         self.lv_btn.toggled.connect(self._on_live_view_toggled)
         self.keep_light_btn.toggled.connect(self._on_keep_light_toggled)
-        self.advance_film_btn.toggled.connect(self._on_advance_film_toggled)
+        self.film_choice.currentChanged.connect(self._on_film_transport_changed)
+        self.flat_first_btn.toggled.connect(self._on_flat_first_toggled)
+        self.eject_btn.clicked.connect(lambda _checked=False: self.controller.eject_film(self._settings.port))
+        self.controller.capture_strip_finished.connect(self._on_strip_finished)
         self.scan_btn.clicked.connect(self._on_scan)
         self.retake_btn.clicked.connect(self._on_retake)
         self.preset_combo.activated.connect(self._on_preset_selected)
@@ -1537,8 +1558,13 @@ class ScanlightSidebar(QWidget):
         self._settings = replace(self._settings, keep_light_on=on)
         self._save_settings()
 
-    def _on_advance_film_toggled(self, on: bool) -> None:
-        self._settings = replace(self._settings, advance_film=on)
+    def _on_film_transport_changed(self, _index: int) -> None:
+        self._settings = replace(self._settings, film_transport=self.film_choice.currentData())
+        self.flat_first_btn.setVisible(self._settings.film_transport == "strip")
+        self._save_settings()
+
+    def _on_flat_first_toggled(self, on: bool) -> None:
+        self._settings = replace(self._settings, flat_first=on)
         self._save_settings()
 
     @pyqtSlot(str)
@@ -2007,6 +2033,7 @@ class ScanlightSidebar(QWidget):
                 )
             )
             shutter_ir = ""
+        dock = rgb and self._light_moves_film
         req = CaptureRequest(
             roll_name=roll,
             frame_number=frame_number,
@@ -2036,9 +2063,13 @@ class ScanlightSidebar(QWidget):
             infrared=s.infrared and rgb and self._light_has_ir,
             capture_delay_s=s.capture_delay_s,
             end_light=(self._framing_light() or (0, 0, 0, 0)) if self.lv_btn.isChecked() or s.keep_light_on else (0, 0, 0, 0),
-            advance_film=rgb and s.advance_film and self._light_moves_film,
+            advance_film=dock and s.film_transport == "next",
+            whole_strip=dock and s.film_transport == "strip" and not retake,
+            flat_first=dock and s.film_transport == "strip" and s.flat_first and not retake,
+            shutter_ladder=self._shutter_labels(),
         )
         self._capturing = tuple(channels) + (("IR",) if req.infrared else ()) if triplet else ()
+        self._strip_running = req.whole_strip
         self.set_scanning(True)
         if triplet and channels == ("R", "G", "B"):
             # Triplet progress arrives only after each channel, so the bar shows at 0% at once.
@@ -2072,14 +2103,30 @@ class ScanlightSidebar(QWidget):
     @pyqtSlot(list)
     def _on_finished(self, paths: list) -> None:
         shot = self._capturing
-        self.set_scanning(False)
         frame = paths[0].split("_Frame")[-1][:3] if paths else ""
+        if self._strip_running:  # the strip goes on: Scan stays Stop until the strip ends
+            self.lv_window.flash_captured(frame)
+            self._set_status(tr("Captured frame {frame}. Inverting in NegPy…", frame=frame))
+            return
+        self.set_scanning(False)
         self.lv_window.flash_captured(frame)
         whole = not shot or shot[:3] == ("R", "G", "B")
         self._set_status(
             tr("Captured frame {frame}. Inverting in NegPy…", frame=frame)
             if whole
             else tr("Captured the {channels} exposure of frame {frame}", channels=" + ".join(shot), frame=frame)
+        )
+        self._relight_after_capture()
+
+    @pyqtSlot(int, bool)
+    def _on_strip_finished(self, scanned: int, at_end: bool) -> None:
+        self._strip_running = False
+        self.set_scanning(False)
+        self.lv_window.clear_progress()
+        self._set_status(
+            tr("Scanned the strip: {frames}. Insert the next strip.", frames=count_of(scanned, "frame"))
+            if at_end
+            else tr("The strip stopped after {frames}. Move the film, then click Scan.", frames=count_of(scanned, "frame"))
         )
         self._relight_after_capture()
 
@@ -2092,6 +2139,7 @@ class ScanlightSidebar(QWidget):
 
     @pyqtSlot()
     def _on_cancelled(self) -> None:
+        self._strip_running = False
         self.set_scanning(False)
         self.lv_window.clear_progress()
         if self._calibrating_preset:
@@ -2117,6 +2165,7 @@ class ScanlightSidebar(QWidget):
         # Only a failed capture re-lights: a failed light write also lands here, and re-lighting
         # on it would retry the dead light in a loop.
         was_scanning = self._scanning
+        self._strip_running = False
         self.set_scanning(False)
         self.lv_window.clear_progress()
         if self._calibrating_preset:
@@ -2175,7 +2224,7 @@ class ScanlightSidebar(QWidget):
         self._light_has_white = status.get("light_has_white", True)  # RGB-only Scanlights (v1-v3) have no white LED
         self._light_has_ir = bool(status.get("light_has_ir", False))
         self._light_moves_film = bool(status.get("light_moves_film", False))
-        self.advance_film_btn.setVisible(self._rgb_mode and self._light_moves_film)
+        self.dock_body.setVisible(self._rgb_mode and self._light_moves_film)
         self._camera_has_preview = bool(status.get("camera_preview", True))
         self._camera_has_config = bool(status.get("camera_config", True))
         # An RGB triplet must write shutter/ISO/aperture onto the body. A camera whose driver
@@ -2295,6 +2344,7 @@ class ScanlightSidebar(QWidget):
         triplet = self._rgb_mode and not self._settings.white_mode and not self._settings.single_capture
         can_retake = can_scan and (not triplet or bool(self.lv_window.selected_rgb()) or (self._settings.infrared and self._light_has_ir))
         self.retake_btn.setEnabled(can_retake and not self._scanning)
+        self.eject_btn.setEnabled(not self._scanning)
         self.retake_btn.setToolTip(
             tr("Retake: capture the last frame again, without advancing the frame number")
             if can_retake or not can_scan
@@ -2437,7 +2487,7 @@ class ScanlightSidebar(QWidget):
         self._rgb_mode = on
         self.light_body.setVisible(on)
         self.keep_light_btn.setVisible(on)
-        self.advance_film_btn.setVisible(on and self._light_moves_film)
+        self.dock_body.setVisible(on and self._light_moves_film)
         self._rgb_hint.setVisible(not on)
         self.cards_changed.emit()
         if not on:

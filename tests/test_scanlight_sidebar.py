@@ -2899,36 +2899,102 @@ def _dock_poll(**fields):
     return {**_poll(usb_ok=True, usb_model="ILCE-7M4", light_detail="Lento Dock 35 (fw 1.0.224)"), "light_moves_film": True, **fields}
 
 
-def test_advance_film_shows_only_with_a_light_that_moves_film():
+def _dock_sidebar(transport="off", flat_first=False):
     w = _sidebar()
-    assert w.advance_film_btn.isHidden()
     w._on_poll_status(_dock_poll())
-    assert not w.advance_film_btn.isHidden()
+    w._exposure_chosen = True  # the poll found a new camera, which asks about metering again
+    w.film_choice.setCurrentIndex(w.film_choice.findData(transport))
+    w.flat_first_btn.setChecked(flat_first)
+    return w
+
+
+def _scan(w, tmp_path, retake=False):
+    w.output.folder_edit.setText(str(tmp_path))
+    w.output.roll_edit.setText("Roll001")
+    w._start_capture(retake=retake)
+    return w.controller.start_capture.call_args[0][0]
+
+
+def test_the_film_controls_show_only_with_a_light_that_moves_film():
+    w = _sidebar()
+    assert w.dock_body.isHidden()
+    w._on_poll_status(_dock_poll())
+    assert not w.dock_body.isHidden()
     w._on_poll_status(_poll(usb_ok=True, usb_model="ILCE-7M4"))  # a Scanlight
-    assert w.advance_film_btn.isHidden()
+    assert w.dock_body.isHidden()
     w._on_poll_status(_dock_poll())
     w._set_rgb_mode(False)
-    assert w.advance_film_btn.isHidden()
+    assert w.dock_body.isHidden()
 
 
-def test_advance_film_is_saved_and_restored():
-    w = _sidebar()
-    w.advance_film_btn.setChecked(True)
+def test_flat_field_first_shows_only_for_a_whole_strip():
+    w = _dock_sidebar()
+    assert w.flat_first_btn.isHidden()
+    w.film_choice.setCurrentIndex(w.film_choice.findData("strip"))
+    assert not w.flat_first_btn.isHidden()
+    w.film_choice.setCurrentIndex(w.film_choice.findData("next"))
+    assert w.flat_first_btn.isHidden()
+
+
+def test_the_film_settings_are_saved_and_restored():
+    w = _dock_sidebar("strip", flat_first=True)
     key, saved = w.controller.session.repo.save_global_setting.call_args[0]
-    assert key == "scanlight_settings" and saved["advance_film"] is True
+    assert key == "scanlight_settings" and saved["film_transport"] == "strip" and saved["flat_first"] is True
 
     ctrl = MagicMock()
     ctrl.session.repo.get_global_setting.return_value = saved
-    assert ScanlightSidebar(ctrl).advance_film_btn.isChecked()
+    restored = ScanlightSidebar(ctrl)
+    assert restored.film_choice.currentData() == "strip" and restored.flat_first_btn.isChecked()
 
 
-@pytest.mark.parametrize(("moves_film", "checked", "expected"), [(True, True, True), (True, False, False), (False, True, False)])
-def test_a_scan_asks_for_the_advance_only_on_a_light_that_moves_film(tmp_path, moves_film, checked, expected):
-    w = _sidebar()
-    w._on_poll_status(_dock_poll(light_moves_film=moves_film))
-    w._exposure_chosen = True  # the poll found a new camera, which asks about metering again
-    w.advance_film_btn.setChecked(checked)
-    w.output.folder_edit.setText(str(tmp_path))
-    w.output.roll_edit.setText("Roll001")
-    w._start_capture(retake=False)
-    assert w.controller.start_capture.call_args[0][0].advance_film is expected
+@pytest.mark.parametrize(
+    ("transport", "flat_first", "expected"),
+    [
+        ("off", False, (False, False, False)),
+        ("next", False, (True, False, False)),
+        ("strip", False, (False, True, False)),
+        ("strip", True, (False, True, True)),
+        ("next", True, (True, False, False)),  # Flat Field First belongs to a whole strip
+    ],
+)
+def test_a_scan_asks_for_what_the_film_choice_says(tmp_path, transport, flat_first, expected):
+    req = _scan(_dock_sidebar(transport, flat_first), tmp_path)
+    assert (req.advance_film, req.whole_strip, req.flat_first) == expected
+
+
+def test_a_retake_never_runs_a_strip(tmp_path):
+    req = _scan(_dock_sidebar("strip", flat_first=True), tmp_path, retake=True)
+    assert not req.whole_strip and not req.flat_first
+
+
+def test_a_scanlight_ignores_a_saved_film_choice(tmp_path):
+    w = _dock_sidebar("strip", flat_first=True)
+    w._on_poll_status(_poll(usb_ok=True, usb_model="ILCE-7M4"))  # the dock was swapped for a Scanlight
+    req = _scan(w, tmp_path)
+    assert not (req.advance_film or req.whole_strip or req.flat_first)
+
+
+def test_scan_stays_stop_until_the_strip_ends(tmp_path):
+    w = _dock_sidebar("strip")
+    _scan(w, tmp_path)
+    assert w._scanning
+    w._on_finished(["/roll/Roll001_Frame001.ARW"])
+    assert w._scanning  # one frame of the strip, not the strip
+    w._on_strip_finished(6, True)
+    assert not w._scanning
+    assert "6 frames" in w.status_strip.message()
+
+
+def test_stop_during_a_strip_ends_it(tmp_path):
+    w = _dock_sidebar("strip")
+    _scan(w, tmp_path)
+    w._on_cancelled()
+    assert not w._scanning and not w._strip_running
+
+
+def test_eject_asks_the_controller_and_waits_for_the_scan():
+    w = _dock_sidebar()
+    w.eject_btn.click()
+    w.controller.eject_film.assert_called_once()
+    w.set_scanning(True)
+    assert not w.eject_btn.isEnabled()

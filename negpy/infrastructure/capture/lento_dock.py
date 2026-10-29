@@ -46,6 +46,7 @@ DOCK_FULL_SCALE = 1000
 PING_INTERVAL_S = 5.0
 #: The motor moves one frame and checks the frame edge within this time.
 ADVANCE_TIMEOUT_S = 15.0
+EJECT_TIMEOUT_S = 30.0
 HOLD_INTERVAL_S = 30.0
 
 _KV = re.compile(r"(\w+)=(\S+)")
@@ -235,6 +236,31 @@ class LentoDock:
         if not self._last_frameat:
             return None
         return int(parse_kv(self._last_frameat).get("idx", "-1"))
+
+    def eject(self) -> None:
+        """Move the strip out of the dock. The last frame stops in the window, short of the exit."""
+        self._enter_continuous()
+        self._command("EJECT", r"^(OK|ERR)", then=((r"^(EJECTED\b|STATE\b.*\bentrance=0\b)", EJECT_TIMEOUT_S),))
+
+    def clear_window(self) -> None:
+        """Move the film out of the window, for a shot of the bare light. The dock needs the
+        frame position it found when the strip went in; `restore_window` brings the film back."""
+        self._enter_continuous()
+        line = self._command("WINCLEAR", r"^(OK|ERR)", then=((r"^WINCLEAR (OK|LIMIT)\b", ADVANCE_TIMEOUT_S),))
+        if line.startswith("WINCLEAR OK"):
+            return
+        self.restore_window()
+        if parse_kv(line).get("steps") == "0":
+            raise RuntimeError("The dock does not know the frame position. Insert the strip again.")
+        raise RuntimeError("The dock could not move the film out of the window.")
+
+    def restore_window(self) -> None:
+        """Move the film back to the frame that was in the window before `clear_window`."""
+        self._command(
+            "WINRESTORE",
+            r"^(OK|ERR)",
+            then=((r"^WINRESTORE OK\b", ADVANCE_TIMEOUT_S), (r"^STATE\b.*\bst=(READY|IDLE)\b", REPLY_TIMEOUT_S)),
+        )
 
     def close(self) -> None:
         try:

@@ -183,9 +183,21 @@ described above.
 - NegPy uses a Scanlight first. To scan with the dock, disconnect the Scanlight.
 - The dock has no white or infrared light. A white-light preset lights red, green and blue
   together at the same level.
-- Turn on **Advance Film** (the step arrow beside Retake) to scan a strip frame by frame. After
-  each Scan, the dock moves the film to the next frame. Retake does not move the film. At the
-  end of the strip, the status line asks for the next strip.
+- **Film** sets what the dock does when you click Scan:
+  - **Off**: the film stays where it is.
+  - **Next Frame**: after each scan, the dock moves the film to the next frame.
+  - **Whole Strip**: one click scans every frame on the strip. **Stop** ends the strip.
+    NegPy keeps the frames already scanned and drops the frame in progress.
+
+  Retake never moves the film. At the end of the strip, the dock ejects the strip. The last
+  frame stops in the window, short of the exit, so the dock pushes it out. **Eject** (beside
+  Film) moves the strip out at any time.
+- **Flat Field First**, with **Whole Strip**: before the first frame, the dock moves the film
+  out of the window, and NegPy shoots the bare light at the preset's LED levels. It starts
+  three stops faster than the scan shutter and shoots again if the brightest channel is
+  clipped or dim. Then the dock moves the film back. NegPy saves the shot as the roll's
+  Flat Field profile, named after the roll, and applies it to the frames that follow. The
+  shot stays in the `flatfield/references` folder, outside the roll.
 - Insert the strip after the light status shows the dock and before you open Live View. The
   dock then finds the first frame itself. Opening the dock's port resets the dock, so it does
   not know the position of a strip that was in it before.

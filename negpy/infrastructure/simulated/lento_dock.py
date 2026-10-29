@@ -21,6 +21,7 @@ class SimDockSerial:
         self.frames = frames  # frames on the strip; the first one is in the window
         self.frame = 0  # the frame in the window, counted from the first
         self.st = "READY" if frames else "IDLE"
+        self.window_clear = False  # WINCLEAR moved the film out of the window
         self._out: queue.Queue[bytes] = queue.Queue()
         self._buf = b""
         self._say("BOOT fw=1.0.224 model=35 reason=nrst film=0 entrance=0 cal=persisted")
@@ -39,7 +40,7 @@ class SimDockSerial:
     @property
     def film(self) -> int:
         """The film sensor, which reads no film while the last frame is still in the window."""
-        return int(self.frames > 0 and self.frame < self.frames - 1)
+        return int(self.frames > 0 and self.frame < self.frames - 1 and not self.window_clear)
 
     def _state(self) -> str:
         return (
@@ -95,6 +96,24 @@ class SimDockSerial:
             self._say(f"CONTHOLD {arg}")
         elif line == "FRAME NEXT":
             self._frame_next()
+        elif line == "EJECT":
+            self._say("OK")
+            self.frames = self.frame = 0
+            self.st = "IDLE"
+            self._say("EJECTED")
+            self._say(self._state())
+        elif line == "WINCLEAR":
+            self._say("OK")
+            if self.frames == 0:
+                self._say("WINCLEAR LIMIT steps=0")
+            else:
+                self.window_clear = True
+                self._say("WINCLEAR OK steps=2780")
+        elif line == "WINRESTORE":
+            self._say("OK")
+            self.window_clear = False
+            self._say("WINRESTORE OK")
+            self._say(self._state())
         elif cmd == "CONTRGB":
             parts = arg.split()
             if len(parts) == 3 and all(p.isdigit() and int(p) <= 1000 for p in parts):

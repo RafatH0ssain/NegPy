@@ -235,3 +235,27 @@ def test_a_refused_advance_raises(sim):
         sim.mode = "AUTO"  # the dock dropped host control
         with pytest.raises(ValueError):
             dock.advance_frame()
+
+
+def test_the_window_clears_for_a_flat_and_the_film_comes_back(sim):
+    with LentoDock(serial_obj=sim) as dock:
+        dock.clear_window()
+        assert sim.window_clear
+        dock.restore_window()
+        assert not sim.window_clear and sim.frame == 0
+        assert dock.advance_frame() == 0  # the strip carries on from the same frame
+
+
+def test_a_window_clear_without_a_frame_position_says_so():
+    sim = SimDockSerial(frames=0)
+    with LentoDock(serial_obj=sim) as dock:
+        with pytest.raises(RuntimeError, match="Insert the strip again"):
+            dock.clear_window()
+    assert "WINRESTORE" in sim.lines
+
+
+def test_eject_moves_the_strip_out(sim):
+    with LentoDock(serial_obj=sim) as dock:
+        dock.eject()
+        assert sim.frames == 0
+        assert dock.advance_frame() is None  # nothing left to scan
