@@ -183,7 +183,8 @@ described above.
 - NegPy uses a Scanlight first. To scan with the dock, disconnect the Scanlight.
 - The dock has no white or infrared light. A white-light preset lights red, green and blue
   together at the same level.
-- The dock does not move the film. Use the dock's buttons to go to the next frame.
+- NegPy does not move the film. While NegPy uses the dock, its buttons jog the film in
+  small steps. Jog each frame into the window before you scan it.
 - When NegPy releases the dock, it puts back the dock's saved light mode and control mode.
 
 The dock's own pulsed light and its film transport stay with Dock Connect.
