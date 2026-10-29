@@ -2926,6 +2926,7 @@ def test_advance_film_is_saved_and_restored():
 def test_a_scan_asks_for_the_advance_only_on_a_light_that_moves_film(tmp_path, moves_film, checked, expected):
     w = _sidebar()
     w._on_poll_status(_dock_poll(light_moves_film=moves_film))
+    w._exposure_chosen = True  # the poll found a new camera, which asks about metering again
     w.advance_film_btn.setChecked(checked)
     w.output.folder_edit.setText(str(tmp_path))
     w.output.roll_edit.setText("Roll001")
