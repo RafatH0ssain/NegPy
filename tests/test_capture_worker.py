@@ -1199,3 +1199,17 @@ def test_the_eject_button_reports_the_film_out(monkeypatch):
     worker.status.connect(status.append)
     worker.eject_film("")
     assert dock.events == ["eject"] and status[-1] == "The film is out. Insert the next strip."
+
+
+def test_the_lights_scan_button_reaches_the_worker_signal(monkeypatch):
+    import negpy.desktop.workers.capture_worker as capture_worker_module
+
+    dock = StripDock(frames=1)
+    dock.on_scan_button = None
+    monkeypatch.setattr(capture_worker_module, "open_light", lambda _port: dock)
+    worker = CaptureWorker()
+    pressed = []
+    worker.scan_button_pressed.connect(lambda: pressed.append(1))
+    worker._ensure_light("")
+    dock.on_scan_button()
+    assert pressed == [1]

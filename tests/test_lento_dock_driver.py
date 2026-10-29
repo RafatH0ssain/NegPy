@@ -1,5 +1,7 @@
 """Lento Dock serial driver tests against the simulated dock: no hardware."""
 
+import time
+
 import pytest
 
 from negpy.infrastructure.capture import lento_dock
@@ -251,3 +253,17 @@ def test_the_light_holds_again_after_an_eject(sim):
         sim.hold = 0  # the dock may drop the hold when the strip leaves
         dock.set_color(200, 110, 40)
         assert sim.lit == tuple(to_duty(v) for v in (200, 110, 40))
+
+
+def test_the_s_button_calls_the_scan_handler(sim):
+    pressed = []
+    with LentoDock(serial_obj=sim) as dock:
+        dock.on_scan_button = lambda: pressed.append(1)
+        dock.advance_frame()
+        assert pressed == []  # NegPy's own commands are never a press
+        sim.press_scan()
+        for _ in range(100):
+            if pressed:
+                break
+            time.sleep(0.01)
+    assert pressed == [1]

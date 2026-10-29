@@ -685,6 +685,7 @@ class AppController(QObject):
     capture_error = pyqtSignal(str)
     capture_status = pyqtSignal(str)
     capture_strip_finished = pyqtSignal(int, bool)  # frames scanned, the strip ran to its end
+    capture_scan_button_pressed = pyqtSignal()  # the light's own Scan button (the Lento Dock's S)
     live_view_requested = pyqtSignal(LiveViewRequest)
     live_view_stop_requested = pyqtSignal()
     camera_session_close_requested = pyqtSignal()
@@ -1228,6 +1229,7 @@ class AppController(QObject):
         self.capture_worker.status.connect(self.capture_status.emit)
         self.capture_worker.flat_captured.connect(self._on_capture_flat)
         self.capture_worker.strip_finished.connect(self.capture_strip_finished.emit)
+        self.capture_worker.scan_button_pressed.connect(self.capture_scan_button_pressed.emit)
         self.live_view_requested.connect(self.capture_worker.start_live_view)
         self.live_view_stop_requested.connect(self.capture_worker.stop_live_view)
         self.camera_session_close_requested.connect(self.capture_worker.close_camera_session)

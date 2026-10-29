@@ -2927,7 +2927,7 @@ def test_the_film_controls_show_only_with_a_light_that_moves_film():
     assert w.dock_body.isHidden()
 
 
-def test_flat_field_first_shows_only_for_a_whole_strip():
+def test_shoot_flat_field_shows_only_for_a_whole_strip():
     w = _dock_sidebar()
     assert w.strip_flat_btn.isHidden()
     w.film_choice.setCurrentIndex(w.film_choice.findData("strip"))
@@ -2998,3 +2998,18 @@ def test_eject_asks_the_controller_and_waits_for_the_scan():
     w.controller.eject_film.assert_called_once()
     w.set_scanning(True)
     assert not w.eject_btn.isEnabled()
+
+
+def test_the_docks_scan_button_works_as_scan(monkeypatch):
+    w = _dock_sidebar()
+    started = []
+    monkeypatch.setattr(w, "_start_capture", lambda retake: started.append(retake))
+    w.scan_btn.setEnabled(False)  # not ready to scan
+    w._on_light_scan_button()
+    assert started == []
+    w.scan_btn.setEnabled(True)
+    w._on_light_scan_button()
+    assert started == [False]
+    w._scanning = True
+    w._on_light_scan_button()
+    w.controller.cancel_capture.assert_called_once()

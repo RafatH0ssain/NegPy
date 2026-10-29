@@ -565,6 +565,7 @@ class ScanlightSidebar(QWidget):
         self.strip_flat_btn.toggled.connect(self._on_strip_flat_toggled)
         self.eject_btn.clicked.connect(lambda _checked=False: self.controller.eject_film(self._settings.port))
         self.controller.capture_strip_finished.connect(self._on_strip_finished)
+        self.controller.capture_scan_button_pressed.connect(self._on_light_scan_button)
         self.scan_btn.clicked.connect(self._on_scan)
         self.retake_btn.clicked.connect(self._on_retake)
         self.preset_combo.activated.connect(self._on_preset_selected)
@@ -1926,6 +1927,11 @@ class ScanlightSidebar(QWidget):
             self.controller.cancel_capture()
             return
         self._start_capture(retake=False)
+
+    def _on_light_scan_button(self) -> None:
+        """The Lento Dock's S button works as Scan: it starts a scan, or stops one."""
+        if self.scan_btn.isEnabled():
+            self._on_scan()
 
     def _on_retake(self) -> None:
         if not self._scanning:

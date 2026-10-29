@@ -191,6 +191,7 @@ class CaptureWorker(QObject):
     status = pyqtSignal(str)
     flat_captured = pyqtSignal(str)  # the bare-light reference shot after a strip
     strip_finished = pyqtSignal(int, bool)  # frames scanned, the strip ran to its end
+    scan_button_pressed = pyqtSignal()  # the light's own Scan button
     live_view_started = pyqtSignal(str)  # jpeg path being refreshed
     #: This body advertises no CAPTURE_PREVIEW, so no stream was started (issue #621). Carries
     #: the operator-facing reason; scanning itself is unaffected.
@@ -306,6 +307,8 @@ class CaptureWorker(QObject):
             self._light = None
         self._light = open_light(port or None)
         self._light_port = port
+        if hasattr(self._light, "on_scan_button"):
+            self._light.on_scan_button = self.scan_button_pressed.emit
         return self._light
 
     @pyqtSlot(int, int, int, int, str)

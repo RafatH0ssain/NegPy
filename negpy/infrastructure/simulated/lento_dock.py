@@ -47,6 +47,14 @@ class SimDockSerial:
             f"busy=0 expmode={self.expmode} shutter=JACK"
         )
 
+    def press_scan(self) -> None:
+        """The S button in host mode: the dock makes its own exposure, then reports it."""
+        self.st = "EXPOSE"
+        self._say(self._state())
+        self._say("SHOT done ms=3000")
+        self.st = "READY"
+        self._say(self._state())
+
     def _frame_next(self) -> None:
         if self.mode != "SEMI" or self.frames == 0:
             self._say("ERR STATE")

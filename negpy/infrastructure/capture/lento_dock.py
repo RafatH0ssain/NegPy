@@ -27,7 +27,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 from negpy.kernel.system.logging import get_logger
 
@@ -155,6 +155,8 @@ class LentoDock:
         self._light_on = False
         self._continuous = False
         self._last_frameat = ""
+        self._in_command = False
+        self.on_scan_button: Optional[Callable[[], None]] = None  # called on the reader thread
         self._saved: dict[str, str] = {}
         self._last_tx = time.monotonic()
         self._last_hold = 0.0
@@ -315,9 +317,13 @@ class LentoDock:
                     break
             self._serial.write((cmd + "\r\n").encode("ascii"))
             self._last_tx = time.monotonic()
-            line = self._await(cmd, expect, timeout)
-            for pattern, wait in then:
-                line = self._await(cmd, pattern, wait)
+            self._in_command = True
+            try:
+                line = self._await(cmd, expect, timeout)
+                for pattern, wait in then:
+                    line = self._await(cmd, pattern, wait)
+            finally:
+                self._in_command = False
             return line
 
     def _await(self, cmd: str, expect: str, timeout: float) -> str:
@@ -381,4 +387,11 @@ class LentoDock:
             self._state = parse_kv(line)
         elif line.startswith("BOOT"):
             self._booted.set()
+        elif line.startswith("SHOT done") and not self._in_command and self.on_scan_button is not None:
+            # NegPy sends no SHOT: an exposure it did not ask for is the S button, which the dock
+            # answers with its own exposure before it reports.
+            try:
+                self.on_scan_button()
+            except Exception:
+                logger.exception("Lento Dock scan button handler failed")
         self._replies.put(line)
