@@ -262,7 +262,7 @@ The IR channel, statistical detection and manual strokes each give one continuou
 ## 6. Lab Scanner Mode
 **Code**: `negpy.features.lab`
 
-1.  **Chroma Denoise** (Fuji, US 5,739,922): $a^{\ast}b^{\ast}$ splits at a Gaussian of $\sigma$ = `chroma_denoise_sigma` (`gaussian_kernel_1d` taps on both engines). Detail above it survives only at edges, $ab' = \text{low} + k\,(ab - \text{low})$, $k = \text{smoothstep}(1.0, 2.5, \sigma\,|\nabla \text{low}|)$ (`CHROMA_EDGE_LO`/`HI`). L is untouched. Below $\sigma = 0.25$ px it is skipped.
+1.  **Chroma Denoise** (Fuji, US 5,739,922): $a^{\ast}b^{\ast}$ splits at a Gaussian of $\sigma$ = `chroma_denoise_sigma` (`gaussian_kernel_1d` taps on both engines). Detail above it survives only at edges, $ab' = \text{low} + k\,(ab - \text{low})$, $k = \text{smoothstep}(1.0, 2.5, \sigma\,|\nabla \text{low}|)$ (`CHROMA_EDGE_LO`/`HI`). L is untouched. Below $\sigma = 0.25$ px, and always in B&W, it is skipped. Default 2.5.
 2.  **Saturation**: an $a^{\ast}b^{\ast}$ scale. Above 1.0 it is gamut-aware (`gamut_aware_chroma_scale`, mirrored in `lab.wgsl`), because an RGB clamp shifts hue: pixels whose boosted color leaves $[0,1]$ (`_in_gamut_lab`) take a soft knee toward their own headroom, found by 10 bisection steps.
 3.  **Skin Protection** (`skin_chroma_rein`, `lab.skin_protection`, default 0.5): a chroma ceiling in a skin mask (`_skin_weight`: hue $52°\pm20°$, full weight to $C^{\ast}=35$, zero by 60, rolloff below $L^{\ast}=15$ and above 95, zero under $C^{\ast}=2$). With mask $w$ and slider $s$:
 
