@@ -342,16 +342,19 @@ class LentoDock:
     def _await(self, cmd: str, expect: str, timeout: float) -> str:
         rx = re.compile(expect)
         deadline = time.monotonic() + timeout
+        seen: list[str] = []
         while True:
             left = deadline - time.monotonic()
             if left <= 0:
-                raise TimeoutError(f"No reply to {cmd!r} within {timeout}s")
+                heard = "; ".join(seen[-8:]) or "nothing"
+                raise TimeoutError(f"No reply to {cmd!r} within {timeout}s (the dock sent: {heard})")
             try:
                 line = self._replies.get(timeout=left)
             except queue.Empty:
                 continue
             if line == _READER_DIED:
                 raise ConnectionError(f"Lento Dock reader stopped before replying to {cmd!r}")
+            seen.append(line)
             if rx.search(line):
                 if re.match(r"^ERR\b", line):
                     raise ValueError(f"Lento Dock refused {cmd!r}: {line}")
@@ -388,6 +391,7 @@ class LentoDock:
             self._replies.put(_READER_DIED)
 
     def _dispatch(self, line: str) -> None:
+        logger.debug("Lento Dock: %s", line)
         if line.startswith("FRAMEAT"):
             self._last_frameat = line
         elif line.startswith(("END_OF_ROLL", "ROLLEND")):
