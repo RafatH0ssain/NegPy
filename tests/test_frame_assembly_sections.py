@@ -148,6 +148,22 @@ def test_trichrome_edit_opens_the_triplet_dialog(trichrome):
     opener.assert_called_once_with(sidebar, controller)
 
 
+def test_trichrome_split_needs_an_open_triplet(trichrome):
+    sidebar, controller = trichrome
+    controller.state.uploaded_files = [{"path": "/tmp/r.cr2", "hash": "h1"}]
+    controller.state.selected_file_idx = 0
+    sidebar.sync_ui()
+    assert sidebar.split_btn.isEnabled() is False
+
+    controller.state.uploaded_files = [{"path": "/tmp/r.cr2", "hash": "h1", "green_path": "/tmp/g.cr2", "blue_path": "/tmp/b.cr2"}]
+    sidebar.sync_ui()
+    assert sidebar.split_btn.isEnabled() is True
+    assert sidebar.merge_btn.isEnabled() is False
+
+    sidebar.split_btn.click()
+    controller.request_split_triplet.assert_called_once()
+
+
 def test_trichrome_merge_needs_three_selected_single_frames(trichrome):
     sidebar, controller = trichrome
     controller.state.uploaded_files = [{"path": f"/tmp/{n}.cr2", "hash": n} for n in "abcd"]

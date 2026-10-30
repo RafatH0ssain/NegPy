@@ -2498,6 +2498,7 @@
   "Source has no IR channel": "Die Quelle hat keinen IR-Kanal",
   "Source scan device (capture not set)": "Scan-Quellgerät (Aufnahme nicht festgelegt)",
   "Split Trichrome": "Trichrome aufteilen",
+  "Split Trichrome: turn this frame back into its three exposures.": "Trichrome aufteilen: Macht dieses Bild wieder zu seinen drei Belichtungen.",
   "Split a trichrome frame back into its three exposures": "Ein Trichrome-Bild wieder in seine drei Belichtungen aufteilen",
   "Split against the default conversion; drag the divider": "Geteilt gegen die Standardkonvertierung. Ziehe die Trennlinie",
   "Split direction": "Teilungsrichtung",

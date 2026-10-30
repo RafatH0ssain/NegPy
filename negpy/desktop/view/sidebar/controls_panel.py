@@ -610,6 +610,7 @@ class ControlsPanel(QWidget):
             (self.presets_sidebar.apply_btn, "preset_apply"),
             (self.presets_sidebar.save_btn, "preset_save"),
             (self.trichrome_sidebar.merge_btn, "triplet_merge"),
+            (self.trichrome_sidebar.split_btn, "triplet_split"),
             (self.trichrome_sidebar.edit_btn, "triplet_edit"),
         ):
             btn.setToolTip(wrap_tooltip(tooltip_with_shortcut(btn.plain_tooltip, action_id)))

@@ -2498,6 +2498,7 @@
   "Source has no IR channel": "ソースに IR チャンネルがありません",
   "Source scan device (capture not set)": "ソースのスキャン機器 (撮影機材は未設定)",
   "Split Trichrome": "トリクロームを分割",
+  "Split Trichrome: turn this frame back into its three exposures.": "トリクロームを分割：このフレームを 3 つの露光に戻します。",
   "Split a trichrome frame back into its three exposures": "トリクロームフレームを 3 つの露出に分割して戻す",
   "Split against the default conversion; drag the divider": "デフォルトの変換と比べて分割表示します。分割線をドラッグします",
   "Split direction": "分割方向",

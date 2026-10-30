@@ -2498,6 +2498,7 @@
   "Source has no IR channel": "소스에 IR 채널이 없습니다.",
   "Source scan device (capture not set)": "원본 스캔 장치(촬영 장비 미설정)",
   "Split Trichrome": "삼색 분할",
+  "Split Trichrome: turn this frame back into its three exposures.": "삼색 분할: 이 프레임을 세 노출로 되돌립니다.",
   "Split a trichrome frame back into its three exposures": "삼색 프레임을 세 노출로 다시 분할",
   "Split against the default conversion; drag the divider": "기본 변환과 나란히 분할합니다. 구분선을 드래그하세요",
   "Split direction": "분할 방향",

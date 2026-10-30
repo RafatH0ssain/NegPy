@@ -2498,6 +2498,7 @@
   "Source has no IR channel": "源文件没有红外通道",
   "Source scan device (capture not set)": "源扫描设备（未设置拍摄器材）",
   "Split Trichrome": "拆分三色扫描",
+  "Split Trichrome: turn this frame back into its three exposures.": "拆分三色扫描：将此帧还原为三次独立曝光。",
   "Split a trichrome frame back into its three exposures": "将三色扫描画面拆回三次独立曝光",
   "Split against the default conversion; drag the divider": "与默认转换分屏比较；拖动分隔线",
   "Split direction": "拆分方向",
