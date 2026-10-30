@@ -24,8 +24,7 @@ from negpy.infrastructure.capture.gphoto import (
     LiveViewUnsupported,
     list_cameras,
 )
-from negpy.infrastructure.capture.protocol import describe_hardware, has_ir_channel, has_white_channel
-from negpy.infrastructure.capture.scanlight import Scanlight
+from negpy.infrastructure.capture.lights import Light, open_light
 from negpy.infrastructure.capture.settings import WhiteCaptureMode
 from negpy.kernel.system.logging import get_logger
 from negpy.services.capture.calibration import (
@@ -177,7 +176,7 @@ class CaptureWorker(QObject):
 
     def __init__(self) -> None:
         super().__init__()
-        self._light: Optional[Scanlight] = None
+        self._light: Optional[Light] = None
         self._light_port = ""
         self._idle_light = (0, 0, 0, 0)  # the last live-control color, put back after a sensor measurement
         self._cancel = threading.Event()
@@ -255,7 +254,7 @@ class CaptureWorker(QObject):
 
     # ----- light -----
 
-    def _ensure_light(self, port: str) -> Scanlight:
+    def _ensure_light(self, port: str) -> Light:
         # Reuse the held connection only while it is the same port and still alive. An
         # unplugged Scanlight leaves a dead handle, and without the health check we would reuse
         # it and never re-detect the device after it is plugged back in.
@@ -267,7 +266,7 @@ class CaptureWorker(QObject):
             except Exception:
                 logger.exception("error closing previous Scanlight connection")
             self._light = None
-        self._light = Scanlight(port or None)
+        self._light = open_light(port or None)
         self._light_port = port
         return self._light
 
@@ -529,7 +528,7 @@ class CaptureWorker(QObject):
         except Exception:
             camera = False
         try:
-            self._ensure_light(port).get_fw_version()
+            self._ensure_light(port).describe()
             light = True
         except Exception:
             light = False
@@ -613,10 +612,9 @@ class CaptureWorker(QObject):
         except Exception:
             logger.exception("camera poll failed")
         try:
-            fw, hw = self._ensure_light(port).get_fw_version()
-            status["light_ok"], status["light_detail"] = True, f"{describe_hardware(hw)} (fw{fw})"
-            status["light_has_white"] = has_white_channel(hw)
-            status["light_has_ir"] = has_ir_channel(hw)
+            detail, has_white, has_ir = self._ensure_light(port).describe()
+            status["light_ok"], status["light_detail"] = True, detail
+            status["light_has_white"], status["light_has_ir"] = has_white, has_ir
         except Exception:
             pass
         self.poll_status.emit(status)
