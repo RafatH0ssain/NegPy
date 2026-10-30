@@ -93,6 +93,7 @@ def test_superia_premium_400_prints_its_green_and_red_lines(library):
         ("delta3200", "film-delta-3200"),
         ("acros", "film-fujifilm-neopan-acros-ii-100"),
         ("velvia50", "film-fujifilm-velvia-50"),
+        ("fujifilm superia premium 400", "film-fujifilm-superia-premium-400"),  # a full stock name must resolve, so its color lines draw
         ("phoenix", "film-harman-phoenix-ii-200"),
         ("800t", "film-cinestill-800t"),
         ("bwxx", "film-cinestill-bwxx"),
