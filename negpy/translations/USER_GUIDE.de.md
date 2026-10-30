@@ -310,7 +310,7 @@ Die Scan-Angaben sind eine Einstellung für die ganze App. Die Liste darunter ze
 
 Eine Kamera zeigt die Karten Raw-Dekodierung und Optik. Eine Kamera mit Schmalbandlicht zeigt auch Trichrom und Kalibrierung. Eine Änderung aktualisiert jedes geöffnete Bild (Ctrl+Z macht sie pro Bild rückgängig), aber ein Papier, das du selbst gewählt hast, bleibt. Ein Kamera-Scan legt Dekodierung und Papier für jedes Bild aus seinem eigenen Licht fest.
 
-<!-- panel:assembly src:4fce6e79 -->
+<!-- panel:assembly src:96b2e550 -->
 ### 10.7 Bildzusammenstellung
 
 Wie aus Dateien Bilder werden. Jede Rolle behält hier ihre eigenen Einstellungen.
@@ -320,7 +320,8 @@ Wie aus Dateien Bilder werden. Jede Rolle behält hier ihre eigenen Einstellunge
 Für eine Kamera mit Schmalbandlicht, die von jedem Bild drei Aufnahmen macht: Rot, Grün und Blau.
 
 *   **Trichrom-Modus**: fügt die drei Aufnahmen zu einem Farbbild zusammen. Aufnahmen werden nach Aufnahmezeit (oder Dateiname) gruppiert, also mache die drei Aufnahmen jedes Bildes direkt nacheinander. Aufnahmen, die sich nicht gruppieren lassen, bleiben einzeln.
-*   **Tripel bearbeiten…**: wähle die drei Aufnahmen des aktuellen Bildes von Hand. **Kanäle ausrichten** richtet sie aus, um Farbsäume zu entfernen.
+*   **Belichtungen zusammenführen (Trichrome)** (Gruppensymbol oder Rechtsklick): wähle die drei Aufnahmen eines Bildes, um sie zusammenzuführen. NegPy erkennt, welche Aufnahme Rot, Grün und Blau ist.
+*   **Trichrome bearbeiten…**: wähle die drei Aufnahmen des aktuellen Bildes von Hand. **Kanäle ausrichten** richtet sie aus, um Farbsäume zu entfernen. **Trichrome aufteilen** (Symbol zum Aufheben der Gruppe oder Rechtsklick) trennt sie wieder.
 *   **Bild als TIFF-Negativ zusammenführen…** (Rechtsklick): speichert ein Tripel oder einen Stitch als ein TIFF neben seiner ersten Quelldatei, mit seiner Bearbeitung. Eine Option verschiebt die Quelldateien in den Papierkorb.
 
 #### Halbformat
