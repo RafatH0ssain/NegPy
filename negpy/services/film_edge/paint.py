@@ -8,6 +8,7 @@ from typing import Optional, Sequence
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
+from negpy.features.metadata.gear_models import EdgeColorLine
 from negpy.services.film_edge.barcodes import DX_CLOCK_TRACK
 from negpy.services.film_edge.edge import Band, EdgeCode, EdgeStyle, EdgeText, edge_items
 from negpy.services.film_edge.geometry import (
@@ -27,6 +28,9 @@ EDGE_CAP_EM = 0.70
 PERF_RIM = 0.08
 # A DX clock track runs past the rebate, up between the holes.
 DX_BAND = DX_CLOCK_TRACK[1] + 0.1
+# A stock's printed color line, named in the edge data (green or red).
+COLOR_LINE_RGB = {"green": (52, 150, 67), "red": (239, 27, 4)}
+COLOR_LINE_THICK_MM = 0.3
 
 
 @dataclass(frozen=True)
@@ -209,6 +213,20 @@ def _draw_code(coverage: np.ndarray, band: _Band, code: EdgeCode, x_px: float, d
         coverage[r0:r1, c0:c1] = np.maximum(coverage[r0:r1, c0:c1], column[None, :])
 
 
+def _draw_color_line(canvas: np.ndarray, line: EdgeColorLine, x0: int, x1: int, edge_y: int, s: float) -> None:
+    """A solid `line.color` at `line.at` mm in from `edge_y`, across the strip width."""
+    color = COLOR_LINE_RGB.get(line.color.casefold())
+    if color is None:
+        return
+    height, width = canvas.shape[:2]
+    center = edge_y - px(line.at, s)
+    half = px(COLOR_LINE_THICK_MM, s) // 2
+    cx0, cy0, cx1, cy1 = clip_box(x0, center - half, x1, center + half + 1, width, height)
+    if cx1 <= cx0 or cy1 <= cy0:
+        return
+    canvas[cy0:cy1, cx0:cx1] = color
+
+
 def paint_strip(
     canvas: np.ndarray,
     x: float,
@@ -259,6 +277,9 @@ def paint_strip(
         if bx1 > bx0 and by1 > by0:
             alpha = coverage[by0 - band_top : by1 - band_top, bx0 - x0 : bx1 - x0]
             blend(canvas[by0:by1, bx0:bx1], alpha, palette.ink)
+
+    for line in style.color_lines:
+        _draw_color_line(canvas, line, x0, x1, y1, s)
 
     if geometry.perforated:
         s_key = int(round(s * 100))

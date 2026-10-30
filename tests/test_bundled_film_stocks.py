@@ -72,6 +72,11 @@ def test_photographed_rolls_print_as_on_the_film(library):
     assert [style(s).code for s in ("film-vision3-250d-ahu", "film-vision3-500t-ahu", "film-cinestill-bwxx")] == ["EN", "EJ", "KE"]
 
 
+def test_superia_premium_400_prints_its_green_and_red_lines(library):
+    style = edge_style(library.get_film_stock("film-fujifilm-superia-premium-400"), library)
+    assert [(line.at, line.color) for line in style.color_lines] == [(2.6, "green"), (3.5, "red")]
+
+
 @pytest.mark.parametrize(
     "folder, stock_id",
     [

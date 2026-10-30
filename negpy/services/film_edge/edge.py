@@ -6,7 +6,7 @@ import zlib
 from dataclasses import dataclass
 from typing import Any, Iterator, Optional, Sequence, Union
 
-from negpy.features.metadata.gear_models import FilmEdge, FilmStock
+from negpy.features.metadata.gear_models import EdgeColorLine, FilmEdge, FilmStock
 from negpy.services.film_edge.barcodes import (
     DX_CLOCK_TRACK,
     DX_DATA_TRACK,
@@ -113,6 +113,7 @@ class EdgeStyle:
     dx_number: Optional[tuple[int, int]] = None
     # False: rebate and perforations only.
     printed: bool = True
+    color_lines: tuple[EdgeColorLine, ...] = ()
 
     @property
     def dx_product(self) -> tuple[int, int]:
@@ -162,6 +163,7 @@ def edge_style(stock: Optional[FilmStock], library: Any = None, name: str = "", 
         edge.text or text,
         edge.code,
         dx_number=parse_dx(edge.dx),
+        color_lines=edge.color_lines,
     )
 
 

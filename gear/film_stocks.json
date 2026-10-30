@@ -543,7 +543,17 @@
     "notes": "Fuji-made consumer color negative; fine tabular grain, bright, low contrast, mint greens, cool pleasant skin.",
     "edge": {
       "dx": "39-3",
-      "source": "DX: Big Film Database (Superia Premium 400)"
+      "source": "DX: Big Film Database (Superia Premium 400)",
+      "colorLines": [
+        {
+          "at": 2.6,
+          "color": "green"
+        },
+        {
+          "at": 3.5,
+          "color": "red"
+        }
+      ]
     }
   },
   {
