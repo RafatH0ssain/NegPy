@@ -7233,6 +7233,13 @@ class AppController(QObject):
         self.session.asset_model.refresh()
         forget_composite(self.session.repo, asset["path"])
 
+    def _discovery_busy(self) -> bool:
+        """A loading run that ends after a triplet changes would load an absorbed exposure again."""
+        if not (self._discovery_running or self._pending_asset_discoveries):
+            return False
+        self.set_status(tr("Wait until the files finish loading"), 4000, kind="warning")
+        return True
+
     def set_triplet(self, red: str, green: str, blue: str, align: bool = True, index: Optional[int] = None) -> None:
         """Join three exposures into one triplet frame, made by hand.
 
@@ -7242,6 +7249,11 @@ class AppController(QObject):
 
         files = self.state.uploaded_files
         wanted = {red, green, blue}
+        if self._discovery_busy():
+            return
+        if not all(os.path.isfile(p) for p in wanted):
+            self.set_status(tr("A file for red, green or blue does not exist"), 4000, kind="warning")
+            return
         if len(wanted) != 3:
             self.set_status(tr("Pick three different files for red, green and blue"), 4000, kind="warning")
             return
@@ -7292,7 +7304,7 @@ class AppController(QObject):
 
     def request_trichrome_merge(self) -> None:
         """Join the three selected frames into one triplet; a background read finds red, green and blue."""
-        if self._batch_busy(tr("Merge Exposures (Trichrome)")):
+        if self._batch_busy(tr("Merge Exposures (Trichrome)")) or self._discovery_busy():
             return
         files = self.state.uploaded_files
         indices = trichrome_merge_indices(files, self.state.selected_indices)

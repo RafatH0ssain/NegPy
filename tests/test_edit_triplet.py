@@ -40,6 +40,7 @@ def _controller(files, active=0, selected=None):
     c.state.selected_file_idx = active
     c.state.selected_indices = selected if selected is not None else [active]
     c._batch_busy.return_value = False
+    c._discovery_busy.return_value = False
     c._begin_batch.return_value = 1
     return c
 
@@ -98,6 +99,47 @@ def test_the_same_file_twice_is_refused(scans):
     _set(c, r, g, g, True, index=0)
     c.session.apply_composite.assert_not_called()
     assert c.set_status.call_args.kwargs["kind"] == "warning"
+
+
+def test_a_missing_file_is_refused_before_anything_changes(scans):
+    r, g = scans("r", "g")
+    c = _controller([_plain(r), _plain(g)])
+    forget = _set(c, r, g, r + ".missing", True, index=0)
+    c.session.save_active_edit.assert_not_called()
+    forget.assert_not_called()
+    c.session.apply_composite.assert_not_called()
+
+
+def test_nothing_changes_while_files_load(scans):
+    r, g, b = scans("r", "g", "b")
+    c = _controller([_plain(r), _plain(g), _plain(b)], selected=[0, 1, 2])
+    c._discovery_busy.return_value = True
+    _set(c, r, g, b, True, index=0)
+    AppController.request_trichrome_merge(c)
+    c.session.apply_composite.assert_not_called()
+    c.trichrome_merge_requested.emit.assert_not_called()
+
+
+def test_the_discovery_guard_says_why():
+    c = _controller([])
+    c._discovery_running = True
+    c._pending_asset_discoveries = []
+    assert AppController._discovery_busy(c) is True
+    assert c.set_status.call_args.kwargs["kind"] == "warning"
+
+
+def test_a_failed_placement_still_ends_the_batch():
+    from negpy.desktop.workers.triplet_probe import TripletProbeWorker
+
+    worker = TripletProbeWorker()
+    seen: list = []
+    worker.placed.connect(seen.append)
+    with (
+        patch("negpy.desktop.workers.triplet_probe.probe_frame", return_value=None),
+        patch("negpy.desktop.workers.triplet_probe.place_triplet", side_effect=ValueError("odd signature")),
+    ):
+        worker.run(("/a", "/b", "/c"))
+    assert seen == [{"paths": ("/a", "/b", "/c"), "triplet": None, "reason": "channels"}]
 
 
 def test_a_stitch_is_never_rebuilt_as_a_triplet(scans):

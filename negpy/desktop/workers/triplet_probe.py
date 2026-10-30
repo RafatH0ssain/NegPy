@@ -25,5 +25,10 @@ class TripletProbeWorker(QObject):
                 # rawpy refuses a TIFF or a JPEG: such a file has no channel to read.
                 logger.info("Trichrome merge could not read %s: %s", path, e)
                 probes[path] = None
-        triplet, reason = place_triplet(probes)
+        try:
+            triplet, reason = place_triplet(probes)
+        except Exception as e:
+            # `placed` must always fire: it ends the batch that holds the shared lane.
+            logger.warning("Trichrome merge could not place %s: %s", paths, e)
+            triplet, reason = None, "channels"
         self.placed.emit({"paths": tuple(paths), "triplet": triplet, "reason": reason})

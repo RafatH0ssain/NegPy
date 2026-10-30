@@ -2465,7 +2465,7 @@ class DesktopSessionManager(QObject):
         composite = {**composite, "keeper": m == "keeper", "excluded": m == "excluded"}
         self.state.uploaded_files.insert(pos, composite)
         self._stamp_scenes()
-        self._stamp_averages()
+        self._stamp_averages([composite["hash"]])
         self.asset_model.refresh()
         self.files_changed.emit()
         self._persist_session()
