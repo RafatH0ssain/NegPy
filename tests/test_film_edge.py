@@ -266,6 +266,21 @@ def test_a_personal_copy_reads_the_bundled_stock_of_the_same_name():
     assert edge_style(personal).dx_number is None
 
 
+def test_a_personal_copy_with_a_partial_edge_borrows_the_bundled_color_lines():
+    # A stock added by the edge-print-from-photo skill keeps its own DX edge but no color lines; a bundled stock
+    # of the same name carries them. The personal copy borrows the bundled color lines and keeps its own edge.
+    bundled = FilmStock(
+        manufacturer="Fujifilm",
+        stock_name="Superia Premium 400",
+        edge=FilmEdge(dx="39-3", color_lines=(EdgeColorLine(2.6, "green"), EdgeColorLine(3.5, "red"))),
+        is_bundled=True,
+    )
+    personal = FilmStock(manufacturer="Fujifilm", stock_name="Superia Premium 400", edge=FilmEdge(dx="39-3"))
+    style = edge_style(personal, GearLibrary(film_stocks=[bundled, personal]))
+    assert style.color_lines == (EdgeColorLine(2.6, "green"), EdgeColorLine(3.5, "red"))
+    assert style.dx_number == (39, 3)
+
+
 def test_a_respool_prints_its_source_stock():
     vision = FilmStock(id="v3", manufacturer="Kodak", stock_name="Vision3 500T", edge=FilmEdge(style="cine", maker="EASTMAN", text="5219"))
     respool = FilmStock(manufacturer="CineStill", stock_name="800T", edge=FilmEdge(prints_as="v3"))
