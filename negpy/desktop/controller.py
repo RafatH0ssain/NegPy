@@ -28,7 +28,10 @@ from negpy.desktop.session import (
     REVERTIBLE_TOOLS,
     UNCROPPED_PREVIEW_TOOLS,
     _source_effective_bounds,
+    can_edit_triplet,
     composite_kind,
+    is_plain_triplet,
+    trichrome_merge_indices,
     resolve_asset_hdr,
     resolve_asset_rgbscan,
     resolve_asset_stitch,
@@ -75,6 +78,7 @@ from negpy.desktop.workers.scan_worker import BatchRequest, MeterRequest, Presca
 from negpy.desktop.workers.library import LibrarySearchTask, LibrarySearchWorker
 from negpy.desktop.workers.hdr import HdrTask, HdrWorker
 from negpy.desktop.workers.stitch import StitchTask, StitchWorker
+from negpy.desktop.workers.triplet_probe import TripletProbeWorker
 from negpy.desktop.workers.chart_fit import ChartSource
 from negpy.desktop.workers.frame_merge import FrameMergeTask, FrameMergeWorker
 from negpy.features.hdr.models import ANCHOR_EV_UNSET, hdr_frame_paths, hdr_hash, hdr_name
@@ -111,7 +115,7 @@ from negpy.domain.models import (
     resolve_preset_export,
 )
 from negpy.services.assets.composites import forget_composite, frame_count, part_paths, restore_maps, saved_composites, source_files
-from negpy.services.assets.triplets import forget_triplets, saved_triplets
+from negpy.services.assets.triplets import applied_triplets, forget_triplets, saved_triplets
 from negpy.services.assets import rolls
 from negpy.services.assets.sensor import SensorProfiles
 from negpy.services.export.contact_sheet_layout import ContactSheetSettings
@@ -602,6 +606,7 @@ class AppController(QObject):
     contact_sheet_requested = pyqtSignal(object)  # ContactSheetJob
     hdr_requested = pyqtSignal(object)
     frame_merge_requested = pyqtSignal(list)
+    trichrome_merge_requested = pyqtSignal(object)  # the three paths
     thumbnail_requested = pyqtSignal(list)
     thumbnail_cancel_requested = pyqtSignal()
     thumbnail_update_requested = pyqtSignal(ThumbnailUpdateTask)
@@ -821,6 +826,8 @@ class AppController(QObject):
         self.hdr_worker.moveToThread(self.export_thread)
         self.frame_merge_worker = FrameMergeWorker()
         self.frame_merge_worker.moveToThread(self.export_thread)
+        self.triplet_probe_worker = TripletProbeWorker()
+        self.triplet_probe_worker.moveToThread(self.export_thread)
         self.export_thread.start()
 
         self.thumb_thread = QThread()
@@ -1111,6 +1118,10 @@ class AppController(QObject):
         self.frame_merge_requested.connect(self.frame_merge_worker.run)
         self.frame_merge_worker.progress.connect(self._on_batch_progress)
         self.frame_merge_worker.finished.connect(self._on_frame_merge_finished)
+
+        self.trichrome_merge_requested.connect(self.triplet_probe_worker.run)
+        self.triplet_probe_worker.progress.connect(self._on_batch_progress)
+        self.triplet_probe_worker.placed.connect(self._on_triplet_placed)
 
         self.hdr_requested.connect(self.hdr_worker.run)
         self.hdr_worker.progress.connect(self._on_batch_progress)
@@ -1775,6 +1786,7 @@ class AppController(QObject):
         announce_rgb: bool = False,
         hot_folder: bool = False,
         user_add: bool = False,
+        rgb_scan: Optional[bool] = None,
     ) -> None:
         """
         Starts asynchronous discovery of supported assets.
@@ -1794,6 +1806,9 @@ class AppController(QObject):
 
         `user_add` marks Add Files, Add Folder and a drop: the files the open folder roll cannot
         hold are reported.
+
+        `rgb_scan` False loads the files without Trichrome Mode grouping, for files the user just
+        took out of a triplet; None follows the roll's mode.
         """
         self.thumb_worker.cancel_pending()
         self.thumbnail_cancel_requested.emit()
@@ -1805,7 +1820,7 @@ class AppController(QObject):
             restore_triplets=restore_triplets,
             replace_existing=replace_existing,
             reselect_path=reselect_path,
-            rgb_scan=self._rgb_scan_mode_for_discovery(active_roll_id),
+            rgb_scan=self._rgb_scan_mode_for_discovery(active_roll_id) if rgb_scan is None else rgb_scan,
             half_frame=self.half_frame_mode_for_roll(active_roll_id) if active_roll_id else False,
             half_frame_paths=frozenset() if active_roll_id else self._half_frame_paths(paths),
             half_frame_profile=self.half_frame_profile(),
@@ -1848,16 +1863,14 @@ class AppController(QObject):
         self._active_discovery_keys = frozenset(_capture_import_key(path) for path in request.paths)
         self.set_status(tr("Scanning for assets…"))
         stitches, merges = restore_maps(self.session.repo)
-        restore_triplets = request.restore_triplets
-        if request.rgb_scan:
-            # Saved groupings skip the raw read. A requested one wins unless it names the same pair:
-            # the saved record carries the hashes that catch a changed file.
-            saved = saved_triplets(self.session.repo)
-            requested = request.restore_triplets or {}
-            restore_triplets = {
-                **saved,
-                **{red: rec for red, rec in requested.items() if list(saved.get(red, [None, None])[:2]) != list(rec[:2])},
-            }
+        # Saved groupings skip the raw read. A requested one wins unless it names the same pair: the saved record carries the hashes
+        # that catch a changed file, and the by-hand flag.
+        saved = applied_triplets(self.session.repo, request.rgb_scan)
+        requested = request.restore_triplets or {}
+        restore_triplets = {
+            **saved,
+            **{red: rec for red, rec in requested.items() if list(saved.get(red, [None, None])[:2]) != list(rec[:2])},
+        } or None
         task = AssetDiscoveryTask(
             paths=list(request.paths),
             supported_extensions=tuple(SUPPORTED_RAW_EXTENSIONS),
@@ -7220,6 +7233,110 @@ class AppController(QObject):
         self.session.asset_model.refresh()
         forget_composite(self.session.repo, asset["path"])
 
+    def set_triplet(self, red: str, green: str, blue: str, align: bool = True, index: Optional[int] = None) -> None:
+        """Join three exposures into one triplet frame, made by hand.
+
+        Every loaded frame that holds one of the three files gives way, as does *index*, the frame
+        Edit Triplet opened on. Their other files return as frames of their own."""
+        from negpy.kernel.image.logic import calculate_file_hash
+
+        files = self.state.uploaded_files
+        wanted = {red, green, blue}
+        if len(wanted) != 3:
+            self.set_status(tr("Pick three different files for red, green and blue"), 4000, kind="warning")
+            return
+        opened = files[index] if index is not None and 0 <= index < len(files) else None
+        if opened is not None and not can_edit_triplet(opened):
+            self.set_status(tr("Edit Triplet does not work on a stitch, an HDR merge, a diptych or a half frame"), 4000, kind="warning")
+            return
+        if any(wanted & set(source_files(f)) for f in files if not can_edit_triplet(f)):
+            self.set_status(tr("A file is already part of a stitch, an HDR merge, a diptych or a half frame"), 4000, kind="warning")
+            return
+        self.session.save_active_edit()
+        indices = {i for i, f in enumerate(files) if wanted & set(source_files(f))}
+        if opened is not None:
+            indices.add(index)
+        replaced = [files[i] for i in sorted(indices)]
+        released = [p for f in replaced for p in source_files(f) if p not in wanted and os.path.exists(p)]
+        # remember_triplets drops only a record that shares a file with the new one.
+        forget_triplets(self.session.repo, [f["path"] for f in replaced if f.get("green_path") and f["path"] != red])
+        known = {}
+        for f in replaced:
+            known.update({f.get("green_path"): f.get("green_hash"), f.get("blue_path"): f.get("blue_hash")})
+            known[f["path"]] = rolls.unforked_hash(f["hash"])
+
+        def file_hash(path: str) -> str:
+            return known.get(path) or calculate_file_hash(path)
+
+        red_entry = next((f for f in replaced if f["path"] == red), {})
+        asset = {
+            "name": os.path.splitext(os.path.basename(red))[0] + " (RGB)",
+            "path": red,
+            "hash": file_hash(red),
+            "legacy_hash": red_entry.get("legacy_hash", ""),
+            "mtime": red_entry.get("mtime") or os.path.getmtime(red),
+            "green_path": green,
+            "blue_path": blue,
+            "green_hash": file_hash(green),
+            "blue_hash": file_hash(blue),
+            "align": bool(align),
+            "triplet_by_hand": True,
+        }
+        self._apply_roll_forks([asset])
+        if not indices:
+            return
+        self.session.apply_composite(sorted(indices), asset)
+        if released:
+            self.request_asset_discovery(released, rgb_scan=False)
+        self.generate_missing_thumbnails()
+
+    def request_trichrome_merge(self) -> None:
+        """Join the three selected frames into one triplet; a background read finds red, green and blue."""
+        if self._batch_busy(tr("Merge Exposures (Trichrome)")):
+            return
+        files = self.state.uploaded_files
+        indices = trichrome_merge_indices(files, self.state.selected_indices)
+        if not indices:
+            self.set_status(tr("Select three single frames to merge as a trichrome"), 4000)
+            return
+        if self._begin_batch("trichrome_merge", tr("Reading the three exposures"), abortable=False) is None:
+            return
+        self.trichrome_merge_requested.emit(tuple(files[i]["path"] for i in indices))
+
+    def _on_triplet_placed(self, result: dict) -> None:
+        self._end_batch("trichrome_merge")
+        triplet = result["triplet"]
+        if triplet is None:
+            if result["reason"] == "picture":
+                message = tr("The three frames do not seem to show the same picture. Use Edit Triplet… to join them anyway.")
+            else:
+                message = tr("Could not tell red, green and blue apart. Use Edit Triplet… to pick them by hand.")
+            self.set_status(message, 8000, kind="warning")
+            return
+        # The selection can change during the read, so the frames are found again by path.
+        loaded = {f["path"] for f in self.state.uploaded_files if not composite_kind(f)}
+        if not set(result["paths"]) <= loaded:
+            self.set_status(tr("A frame changed during the merge. Select the three frames again."), 4000, kind="warning")
+            return
+        self.set_triplet(triplet.red, triplet.green, triplet.blue)
+
+    def request_split_triplet(self) -> None:
+        """Turn the active triplet back into its three exposures. Each keeps its own edit; the red one
+        keeps the triplet's, whose hash it shares."""
+        idx = self.state.selected_file_idx
+        if not (0 <= idx < len(self.state.uploaded_files)):
+            return
+        asset = self.state.uploaded_files[idx]
+        if not is_plain_triplet(asset):
+            return
+        self.session.save_active_edit()
+        paths = [p for p in (asset["path"], asset["green_path"], asset["blue_path"]) if os.path.exists(p)]
+        forget_triplets(self.session.repo, [asset["path"]])
+        self._drop_dissolved_composite(idx)
+        self._pending_scanned_file = asset["path"]
+        # Without grouping: Trichrome Mode would join the three again at once.
+        self.request_asset_discovery(paths, rgb_scan=False)
+
     def request_unstitch(self) -> None:
         """Dissolve the active stitched composite back into its part frames.
 
@@ -7501,7 +7618,7 @@ class AppController(QObject):
         paths = rolls.removed_paths(self.session.repo, roll_id)
         if not paths:
             return 0
-        triplets = saved_triplets(self.session.repo) if self.rgb_scan_mode_for_roll(roll_id) else {}
+        triplets = applied_triplets(self.session.repo, self.rgb_scan_mode_for_roll(roll_id))
         return frame_count(paths, saved_composites(self.session.repo), triplets)
 
     def restore_removed_frames(self, roll_id: str) -> None:
