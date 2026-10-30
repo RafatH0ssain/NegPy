@@ -2544,9 +2544,9 @@ class FileBrowser(QWidget):
             menu.addSeparator()
             active = state.uploaded_files[state.selected_file_idx] if 0 <= state.selected_file_idx < len(state.uploaded_files) else {}
             if active and can_edit_triplet(active):
-                menu.addAction(label_with_shortcut(tr("Edit Triplet…"), "triplet_edit")).triggered.connect(self._on_edit_triplet)
+                menu.addAction(label_with_shortcut(tr("Edit Trichrome…"), "triplet_edit")).triggered.connect(self._on_edit_triplet)
             if is_plain_triplet(active):
-                menu.addAction(label_with_shortcut(tr("Split Triplet"), "triplet_split")).triggered.connect(
+                menu.addAction(label_with_shortcut(tr("Split Trichrome"), "triplet_split")).triggered.connect(
                     lambda: self.controller.request_split_triplet()
                 )
             self._add_merge_to_tiff_action(menu, state, SCOPE_FRAME)

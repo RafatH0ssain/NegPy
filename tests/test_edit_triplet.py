@@ -1,4 +1,4 @@
-"""Edit Triplet, Split Triplet and Merge Exposures (Trichrome): a triplet made by hand is one Film Strip frame."""
+"""Edit Trichrome, Split Trichrome and Merge Exposures (Trichrome): a triplet made by hand is one Film Strip frame."""
 
 from unittest.mock import MagicMock, patch
 

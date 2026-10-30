@@ -25,7 +25,7 @@ class TrichromeSidebar(BaseSidebar):
         self.merge_btn = self._icon_action(
             "fa5s.object-group", tr("Merge Exposures (Trichrome): join the three selected frames into one, finding red, green and blue.")
         )
-        self.edit_btn = self._icon_action("fa5s.pen", tr("Edit Triplet…: pick this frame's three exposures by hand."))
+        self.edit_btn = self._icon_action("fa5s.pen", tr("Edit Trichrome…: pick this frame's three exposures by hand."))
         row = QHBoxLayout()
         row.addWidget(self.enable_btn, 1)
         row.addWidget(self.merge_btn)

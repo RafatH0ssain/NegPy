@@ -448,7 +448,7 @@ def composite_kind(asset: Dict[str, Any]) -> str:
 
 
 def can_edit_triplet(asset: Dict[str, Any]) -> bool:
-    """Edit Triplet rebuilds a plain frame or a triplet; it would drop a composite's parts or a half's split."""
+    """Edit Trichrome rebuilds a plain frame or a triplet; it would drop a composite's parts or a half's split."""
     return composite_kind(asset) in ("", "rgb") and not asset.get("half")
 
 

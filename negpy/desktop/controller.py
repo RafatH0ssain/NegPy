@@ -7251,7 +7251,7 @@ class AppController(QObject):
         """Join three exposures into one triplet frame, made by hand.
 
         Every loaded frame that holds one of the three files gives way, as does *index*, the frame
-        Edit Triplet opened on. Their other files return as frames of their own."""
+        Edit Trichrome opened on. Their other files return as frames of their own."""
         from negpy.kernel.image.logic import calculate_file_hash
 
         files = self.state.uploaded_files
@@ -7266,7 +7266,7 @@ class AppController(QObject):
             return
         opened = files[index] if index is not None and 0 <= index < len(files) else None
         if opened is not None and not can_edit_triplet(opened):
-            self.set_status(tr("Edit Triplet does not work on a stitch, an HDR merge, a diptych or a half frame"), 4000, kind="warning")
+            self.set_status(tr("Edit Trichrome does not work on a stitch, an HDR merge, a diptych or a half frame"), 4000, kind="warning")
             return
         if any(wanted & set(source_files(f)) for f in files if not can_edit_triplet(f)):
             self.set_status(tr("A file is already part of a stitch, an HDR merge, a diptych or a half frame"), 4000, kind="warning")
@@ -7327,9 +7327,9 @@ class AppController(QObject):
         triplet = result["triplet"]
         if triplet is None:
             if result["reason"] == "picture":
-                message = tr("The three frames do not seem to show the same picture. Use Edit Triplet… to join them anyway.")
+                message = tr("The three frames do not seem to show the same picture. Use Edit Trichrome… to join them anyway.")
             else:
-                message = tr("Could not tell red, green and blue apart. Use Edit Triplet… to pick them by hand.")
+                message = tr("Could not tell red, green and blue apart. Use Edit Trichrome… to pick them by hand.")
             self.set_status(message, 8000, kind="warning")
             return
         # The selection can change during the read, so the frames are found again by path.

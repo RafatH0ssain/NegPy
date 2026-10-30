@@ -20,7 +20,7 @@ class RgbTripletDialog(QDialog):
     def __init__(self, parent, red: str, green: str, blue: str, align: bool = True, start_dir: str = "", *, repo=None) -> None:
         super().__init__(parent)
         self._start_dir = start_dir
-        self.setWindowTitle(tr("Edit Triplet"))
+        self.setWindowTitle(tr("Edit Trichrome"))
         layout = QVBoxLayout(self)
         self._edits: dict[str, QLineEdit] = {}
         for label, path in ((mark("Red"), red), (mark("Green"), green), (mark("Blue"), blue)):

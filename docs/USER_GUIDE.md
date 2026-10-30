@@ -564,7 +564,7 @@ For a camera with narrowband light that takes three shots of each frame: red, gr
 
 *   **Trichrome Mode**: joins the three shots into one color frame. Shots are grouped by capture time (or file name), so take each frame's three shots one after another. Shots that do not group stay separate.
 *   **Merge Exposures (Trichrome)** (group icon, or right-click): select a frame's three shots to join them. NegPy finds which shot is red, green and blue.
-*   **Edit Triplet…**: pick the three shots of the current frame by hand. **Align Channels** lines them up to remove color fringes. **Split Triplet** (right-click) separates them again.
+*   **Edit Trichrome…**: pick the three shots of the current frame by hand. **Align Channels** lines them up to remove color fringes. **Split Trichrome** (right-click) separates them again.
 *   **Merge Frame to TIFF Negative…** (right-click): saves a triplet or a stitch as one TIFF beside its first source file, with its edit. An option moves the source files to the Trash.
 
 #### Half Frame
