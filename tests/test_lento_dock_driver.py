@@ -1,5 +1,7 @@
 """Lento Dock serial driver tests against the simulated dock: no hardware."""
 
+import time
+
 import pytest
 
 from negpy.infrastructure.capture import lento_dock
@@ -196,3 +198,72 @@ def test_a_dock_needs_a_port_or_a_serial_object():
 
 def test_reply_parsing():
     assert lento_dock.parse_kv("STATE link=1 mode=SEMI expmode=CONT") == {"link": "1", "mode": "SEMI", "expmode": "CONT"}
+
+
+def test_advance_moves_one_frame_and_waits_until_it_is_in_place(sim):
+    with LentoDock(serial_obj=sim) as dock:
+        assert dock.advance_frame() == 0
+        assert sim.frame == 1
+        assert sim.mode == "SEMI"  # FRAME NEXT needs host control
+        assert dock.advance_frame() == 1
+
+
+def test_the_last_frame_is_scanned_before_the_strip_ends():
+    # The sensor reads no film while the last frame is still in the window.
+    sim = SimDockSerial(frames=3)
+    with LentoDock(serial_obj=sim) as dock:
+        assert [dock.advance_frame() for _ in range(2)] == [0, 1]
+        assert sim.film == 0 and sim.frame == 2
+        assert dock.advance_frame() is None
+        assert sim.frame == 2  # nothing moved: the frame in the window was the last
+
+
+def test_advance_without_film_reports_the_end():
+    sim = SimDockSerial(frames=0)
+    with LentoDock(serial_obj=sim) as dock:
+        assert dock.advance_frame() is None
+    assert "FRAME NEXT" not in sim.lines
+
+
+def test_advance_restores_the_saved_mode_on_close(sim):
+    with LentoDock(serial_obj=sim) as dock:
+        dock.advance_frame()
+    assert (sim.mode, sim.expmode) == ("AUTO", "BRGB")
+
+
+def test_a_refused_advance_raises(sim):
+    with LentoDock(serial_obj=sim) as dock:
+        dock._enter_continuous()
+        sim.mode = "AUTO"  # the dock dropped host control
+        with pytest.raises(ValueError):
+            dock.advance_frame()
+
+
+def test_eject_moves_the_strip_out(sim):
+    with LentoDock(serial_obj=sim) as dock:
+        dock.eject()
+        assert sim.frames == 0
+        assert dock.advance_frame() is None  # nothing left to scan
+
+
+def test_the_light_holds_again_after_an_eject(sim):
+    with LentoDock(serial_obj=sim) as dock:
+        dock.set_color(200, 110, 40)
+        dock.eject()
+        sim.hold = 0  # the dock may drop the hold when the strip leaves
+        dock.set_color(200, 110, 40)
+        assert sim.lit == tuple(to_duty(v) for v in (200, 110, 40))
+
+
+def test_the_s_button_calls_the_scan_handler(sim):
+    pressed = []
+    with LentoDock(serial_obj=sim) as dock:
+        dock.on_scan_button = lambda: pressed.append(1)
+        dock.advance_frame()
+        assert pressed == []  # NegPy's own commands are never a press
+        sim.press_scan()
+        for _ in range(100):
+            if pressed:
+                break
+            time.sleep(0.01)
+    assert pressed == [1]

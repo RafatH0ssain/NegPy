@@ -183,11 +183,32 @@ described above.
 - NegPy uses a Scanlight first. To scan with the dock, disconnect the Scanlight.
 - The dock has no white or infrared light. A white-light preset lights red, green and blue
   together at the same level.
-- NegPy does not move the film. While NegPy uses the dock, its buttons jog the film in
-  small steps. Jog each frame into the window before you scan it.
+- **Film** sets what the dock does when you click Scan:
+  - **Off**: the film stays where it is.
+  - **Next Frame**: after each scan, the dock moves the film to the next frame.
+  - **Whole Strip**: one click scans every frame on the strip. **Stop** ends the strip.
+    NegPy keeps the frames already scanned and drops the frame in progress.
+
+  Retake never moves the film. At the end of the strip, the dock ejects the strip. The last
+  frame stops in the window, short of the exit, so the dock pushes it out. **Eject** (beside
+  Film) moves the strip out at any time.
+- **Shoot Flat Field**, with **Whole Strip**: after the strip ejects, NegPy shoots the empty
+  dock at the preset's LED levels. It starts three stops faster than the scan shutter and
+  shoots again if the brightest channel is clipped or dim. NegPy saves the shot as the roll's
+  Flat Field profile, named after the roll, and applies it to the roll's frames. The shot
+  stays in the `flatfield/references` folder, outside the roll. A strip that stops before its
+  end gets no flat. The flat never comes first: after the dock moves the film out of the
+  window and back, it does not advance.
+- Insert the strip after the light status shows the dock and before you open Live View. The
+  dock then finds the first frame itself. Opening the dock's port resets the dock, so it does
+  not know the position of a strip that was in it before.
+- While NegPy uses the dock, the dock's S button works as Scan: it starts a scan, or stops one.
+  The dock answers the press with its own exposure first, so the scan starts a few seconds
+  later. An arrow button nudges the film on a tap and moves it while you hold it. NegPy
+  leaves the dock's button mode (`BTNMODE`) as you set it.
 - When NegPy releases the dock, it puts back the dock's saved light mode and control mode.
 
-The dock's own pulsed light and its film transport stay with Dock Connect.
+The dock's own pulsed light stays with Dock Connect.
 
 ### Sensor calibration
 

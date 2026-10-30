@@ -27,7 +27,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 from negpy.kernel.system.logging import get_logger
 
@@ -44,6 +44,9 @@ DOCK_FULL_SCALE = 1000
 
 #: The dock drops the host link after 15 s of silence, and lets CONTHOLD lapse.
 PING_INTERVAL_S = 5.0
+#: The motor moves one frame and checks the frame edge within this time.
+ADVANCE_TIMEOUT_S = 15.0
+EJECT_TIMEOUT_S = 30.0
 HOLD_INTERVAL_S = 30.0
 
 _KV = re.compile(r"(\w+)=(\S+)")
@@ -151,6 +154,9 @@ class LentoDock:
         self._booted = threading.Event()
         self._light_on = False
         self._continuous = False
+        self._last_frameat = ""
+        self._in_command = False
+        self.on_scan_button: Optional[Callable[[], None]] = None  # called on the reader thread
         self._saved: dict[str, str] = {}
         self._last_tx = time.monotonic()
         self._last_hold = 0.0
@@ -212,6 +218,33 @@ class LentoDock:
             self._command("CONTRGB 0 0 0", r"^(CONTRGB|ERR)")
         self._light_on = False
 
+    def advance_frame(self) -> Optional[int]:
+        """Move the film one frame and wait until the frame is in the window. Returns the dock's
+        frame index, or None at the end of the strip.
+
+        The film sensor reads no film while the last frame is still in the window, so the frame
+        reached with no film is a frame; the strip ends at the next advance.
+        """
+        self._enter_continuous()
+        self._command("STATE?", r"^STATE\b")
+        if self._state.get("film") == "0":
+            return None
+        self._last_frameat = ""
+        self._command(
+            "FRAME NEXT",
+            r"^(OK|ERR)",
+            then=((r"^(FRAMEAT|END_OF_ROLL|ROLLEND)\b", ADVANCE_TIMEOUT_S), (r"^STATE\b.*\bst=(READY|IDLE)\b", REPLY_TIMEOUT_S)),
+        )
+        if not self._last_frameat:
+            return None
+        return int(parse_kv(self._last_frameat).get("idx", "-1"))
+
+    def eject(self) -> None:
+        """Move the strip out of the dock. The last frame stops in the window, short of the exit."""
+        self._enter_continuous()
+        self._command("EJECT", r"^(OK|ERR)", then=((r"^(EJECTED\b|STATE\b.*\bentrance=0\b)", EJECT_TIMEOUT_S),))
+        self._light_on = False  # the next set_color holds the light again, for a shot of the empty dock
+
     def close(self) -> None:
         try:
             if self.is_connected():
@@ -271,11 +304,11 @@ class LentoDock:
             self._serial.write((cmd + "\r\n").encode("ascii"))
             self._last_tx = time.monotonic()
 
-    def _command(self, cmd: str, expect: str, timeout: float = REPLY_TIMEOUT_S) -> str:
-        """Send `cmd` and return the first reply line that matches `expect`."""
+    def _command(self, cmd: str, expect: str, timeout: float = REPLY_TIMEOUT_S, then: tuple[tuple[str, float], ...] = ()) -> str:
+        """Send `cmd` and return the first reply line that matches `expect`. Each `(pattern,
+        timeout)` in `then` waits for a later line in turn, and the last line matched is returned."""
         if self._reader_error is not None:
             raise ConnectionError(f"Lento Dock reader stopped: {self._reader_error}")
-        rx = re.compile(expect)
         with self._write_lock:
             while not self._replies.empty():
                 try:
@@ -284,21 +317,35 @@ class LentoDock:
                     break
             self._serial.write((cmd + "\r\n").encode("ascii"))
             self._last_tx = time.monotonic()
-            deadline = time.monotonic() + timeout
-            while True:
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    raise TimeoutError(f"No reply to {cmd!r} within {timeout}s")
-                try:
-                    line = self._replies.get(timeout=left)
-                except queue.Empty:
-                    continue
-                if line == _READER_DIED:
-                    raise ConnectionError(f"Lento Dock reader stopped before replying to {cmd!r}")
-                if rx.search(line):
-                    if re.match(r"^ERR\b", line):
-                        raise ValueError(f"Lento Dock refused {cmd!r}: {line}")
-                    return line
+            self._in_command = True
+            try:
+                line = self._await(cmd, expect, timeout)
+                for pattern, wait in then:
+                    line = self._await(cmd, pattern, wait)
+            finally:
+                self._in_command = False
+            return line
+
+    def _await(self, cmd: str, expect: str, timeout: float) -> str:
+        rx = re.compile(expect)
+        deadline = time.monotonic() + timeout
+        seen: list[str] = []
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                heard = "; ".join(seen[-8:]) or "nothing"
+                raise TimeoutError(f"No reply to {cmd!r} within {timeout}s (the dock sent: {heard})")
+            try:
+                line = self._replies.get(timeout=left)
+            except queue.Empty:
+                continue
+            if line == _READER_DIED:
+                raise ConnectionError(f"Lento Dock reader stopped before replying to {cmd!r}")
+            seen.append(line)
+            if rx.search(line):
+                if re.match(r"^ERR\b", line):
+                    raise ValueError(f"Lento Dock refused {cmd!r}: {line}")
+                return line
 
     def _keepalive_loop(self) -> None:
         while not self._stop.wait(1.0):
@@ -331,8 +378,20 @@ class LentoDock:
             self._replies.put(_READER_DIED)
 
     def _dispatch(self, line: str) -> None:
+        logger.debug("Lento Dock: %s", line)
+        if line.startswith("FRAMEAT"):
+            self._last_frameat = line
+        elif line.startswith(("END_OF_ROLL", "ROLLEND")):
+            self._last_frameat = ""
         if line.startswith("STATE"):
             self._state = parse_kv(line)
         elif line.startswith("BOOT"):
             self._booted.set()
+        elif line.startswith("SHOT done") and not self._in_command and self.on_scan_button is not None:
+            # NegPy sends no SHOT: an exposure it did not ask for is the S button, which the dock
+            # answers with its own exposure before it reports.
+            try:
+                self.on_scan_button()
+            except Exception:
+                logger.exception("Lento Dock scan button handler failed")
         self._replies.put(line)
