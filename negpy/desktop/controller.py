@@ -9677,12 +9677,9 @@ class AppController(QObject):
         self.set_status(", ".join(parts), 6000 if failed else 4000)
 
     def _bake_auto_density_grade_for_export(self, files: list[dict]) -> None:
-        """Freeze Auto Density / Auto Grade for each exported file before the export runs, so the
-        saved edit no longer depends on the meters. The export renders with the live config, which
-        equals the frozen config, so the output is unchanged.
-        The open frame's truth is the live config, not the DB, so reflect it there: a DB-only write
-        would be clobbered by the pre-bake live config on the next save. Other frames keep the DB-only
-        write."""
+        """Freeze Auto Density / Auto Grade in each exported file's saved edit, so it no longer
+        reads the meters; the frozen values render the same pixels. The open frame goes through
+        the live config, because the next save would overwrite a DB-only write."""
         current_hash = self.state.current_file_hash or ""
         for f in files:
             baked_cfg = self._baked_config_for_file(f)

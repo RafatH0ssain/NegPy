@@ -2260,7 +2260,7 @@ class ImageProcessor:
                 return img_u16, self._get_target_icc_bytes(color_space, output_icc_path)
 
             # Matrix/TRC pairs take the exact kernel: lcms resamples a 16-bit transform to a
-            # grid, off by up to 8% near the destination gamut edge. LUT profiles keep lcms.
+            # grid, which drifts near the destination gamut edge. LUT profiles keep lcms.
             if img_u16.ndim == 3:
                 fast = apply_matrix_trc_u16(img_u16, src_bytes, dst_bytes)
                 if fast is not None:
