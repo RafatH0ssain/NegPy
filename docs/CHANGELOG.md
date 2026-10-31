@@ -1,6 +1,6 @@
 # Change Log
 
-## 0.67.0 (draft)
+## 0.67.0
 
 - New: **B&W from color negatives** — print through a Yellow, Orange, Red or Green contrast filters.
 - New: **Improved Roll Average** — baselines always measure in the background, and a Roll Average peek (hold U) prints the frame on its roll or scene average.
@@ -18,7 +18,7 @@
 - Change: **Chroma Denoise** — on at 2.5 by default, skipped in B&W.
 - Change: **Speed** — more stuff moved to Rust negpy_core, faster export and TIFF/DNG previews.
 - Fix: **macOS** — pinch zoom, canvas resize and a wait-cursor crash. @PabloRuizCuevas @seanharding
-- Fix: **Export and metadata** — TIFF Exif, Bake on Export, Subfolder of Source, EV parsing and frame numbering. @jharlap @red-prs @kurtwindisch
+- Fix: **Export and metadata** — TIFF Exif, Bake on Export, Subfolder of Source, EV parsing, frame numbering, and Add Custom gear opens in My Gear. @jharlap @red-prs @kurtwindisch @activexray
 - Fix: **Camera scanning** — a manual Canon lens grays out the aperture stepper, and a scan leaves its aperture alone. @RafatH0ssain
 - Fix: **File loading** — trimmed Pakon frames and camera captures of B&W film. @thetalkingdrum @seanharding
 
