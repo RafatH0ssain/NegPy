@@ -520,7 +520,11 @@
     "iso": 400,
     "format": "35mm",
     "colorType": "ColorNegative",
-    "notes": "Kodak-made consumer color negative; UltraMax 400 in all observed behaviour: warm, punchy, saturated."
+    "notes": "Kodak-made consumer color negative; UltraMax 400 in all observed behaviour: warm, punchy, saturated.",
+    "edge": {
+      "dx": "95-7",
+      "source": "photo of a Fujifilm 400 roll: FUJI and 400 on the rebate, DX 95-7 (frames 0A-3A)"
+    }
   },
   {
     "id": "film-fujifilm-superia-x-tra-400",
@@ -1164,7 +1168,11 @@
     "iso": 400,
     "format": "35mm",
     "colorType": "ColorNegative",
-    "notes": "Kodak consumer-family color negative; moderate-coarse grain, vibrant with muted brownish midtones and vintage shadows."
+    "notes": "Kodak consumer-family color negative; moderate-coarse grain, vibrant with muted brownish midtones and vintage shadows.",
+    "edge": {
+      "dx": "97-9",
+      "source": "photo of a Lomography CN 400 roll: DX 97-9 (frames 0A-3A)"
+    }
   },
   {
     "id": "film-lomography-cine200-tungsten",

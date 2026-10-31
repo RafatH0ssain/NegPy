@@ -70,6 +70,9 @@ def test_photographed_rolls_print_as_on_the_film(library):
     assert (gold.layout, gold.text, gold.dx_number) == ("kodak-alternating", "GB 200-7", (96, 12))
     assert style("film-kentmere-400").layout == "kentmere" and style("film-kentmere-400").dx_number is None
     assert [style(s).code for s in ("film-vision3-250d-ahu", "film-vision3-500t-ahu", "film-cinestill-bwxx")] == ["EN", "EJ", "KE"]
+    # photographed rolls (edge-print-from-photo): the DX each shows on its rebate
+    assert (style("film-fujifilm-400").layout, style("film-fujifilm-400").dx_number) == ("fuji", (95, 7))
+    assert (style("film-lomography-cn-400").layout, style("film-lomography-cn-400").dx_number) == ("generic", (97, 9))
 
 
 def test_superia_premium_400_prints_its_green_and_red_lines(library):
