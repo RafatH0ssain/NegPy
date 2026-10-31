@@ -37,7 +37,6 @@ from negpy.features.exposure.normalization import (
     measure_anchor_from_log,
     measure_clip_fractions,
     measure_neutral_axis_from_log,
-    effective_crosstalk_matrix,
     unmix_log_image,
     measure_highlight_point_from_log,
     measure_shadow_point_from_log,
@@ -92,6 +91,7 @@ from negpy.features.transparency.logic import (
     wb_split_geometry,
     zone_geometry,
 )
+from negpy.features.process.fade import unmix_with_fade
 from negpy.features.process.capture_color import apply_camera_matrix, camera_to_working_matrix
 from negpy.features.process.logic import should_fold_camera_wb
 from negpy.features.exposure.bw_filter import collapse_weights, plane_weights, printed_exposure
@@ -823,7 +823,7 @@ class GPUEngine:
         sorted_grid = None
         scan_clip_fractions = None
         analysis_source = None
-        unmix_m = effective_crosstalk_matrix(settings.process, settings.process.process_mode)
+        unmix_m = unmix_with_fade(settings.process, settings.process.process_mode)
         # The transparency curve reads working space, so its meter must too: the same
         # camera matrix TransparencyBaseProcessor applies, on the grid.
         cam_m = camera_to_working_matrix(cam_xyz, camera_wb if should_fold_camera_wb(settings.process) else None) if transfer else None
@@ -2947,7 +2947,7 @@ class GPUEngine:
 
         # Unmixed like the non-tiled path, lazily: skipped when bounds are locked and no
         # auto refs, anchor or textural range need it.
-        unmix_m = effective_crosstalk_matrix(settings.process, settings.process.process_mode)
+        unmix_m = unmix_with_fade(settings.process, settings.process.process_mode)
         prefiltered_cache: Optional[np.ndarray] = None
         sorted_cache: Optional[np.ndarray] = None
 

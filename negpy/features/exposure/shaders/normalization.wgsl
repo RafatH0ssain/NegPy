@@ -7,9 +7,9 @@ struct NormUniforms {
     transfer_flag: u32,
     wp_offset: f32,
     bp_offset: f32,
-    // Capture-side dye-unmix rows (effective blended+row-normalized matrix,
-    // computed CPU-side); identity rows when the unmix is off. Applied to the
-    // raw negative log densities before the stretch — mirrors the CPU path.
+    // Log-density matrix rows, computed CPU-side (`unmix_with_fade`): the row-normalized
+    // crosstalk unmix, times the fade restoration on a slide, which is not row-normalized.
+    // Identity rows when neither applies. Applied before the stretch, as on the CPU.
     unmix0: vec4<f32>,
     unmix1: vec4<f32>,
     unmix2: vec4<f32>,

@@ -249,7 +249,6 @@ def _fade_sidebar(**process):
     ctrl = MagicMock()
     ctrl.state.config = replace(cfg, process=replace(cfg.process, process_mode=ProcessMode.E6, **process))
     ctrl.session.repo.get_global_setting.return_value = "midtone"
-    ctrl.camera_working_matrix.return_value = None
     w = SensorSidebar(ctrl)
     w.state = ctrl.state
     return w, ctrl
@@ -257,7 +256,10 @@ def _fade_sidebar(**process):
 
 def test_a_failed_estimate_keeps_the_survivals_and_shows_why():
     w, ctrl = _fade_sidebar(fade_ratio_g=0.6, fade_ratio_b=0.7)
-    ctrl.state.preview_raw = np.full((32, 32, 3), 0.5, dtype=np.float32)  # flat: no grays to read
+    from negpy.desktop.workers.chart_fit import ChartSource
+
+    flat = np.full((32, 32, 3), 0.5, dtype=np.float32)  # no grays to read
+    ctrl.chart_fit_source.return_value = ChartSource(flat, ctrl.state.config, "flat", None, None, (), 1)
 
     w._on_estimate_fade()
 
@@ -266,3 +268,14 @@ def test_a_failed_estimate_keeps_the_survivals_and_shows_why():
     assert w.fade_ratio_b_slider.value() == pytest.approx(0.7)
     assert w.fade_estimate_hint.text()
     assert not w.fade_estimate_hint.isHidden()
+
+
+@pytest.mark.parametrize(
+    ("mode", "positive", "shown"), [(ProcessMode.E6, False, True), (ProcessMode.E6, True, False), (ProcessMode.C41, False, False)]
+)
+def test_fade_restoration_shows_only_on_a_slide_as_captured(mode, positive, shown):
+    w, _ctrl = _fade_sidebar()
+    w.state.config = replace(w.state.config, process=replace(w.state.config.process, process_mode=mode, positive_source=positive))
+    w.sync_ui()
+    assert w.fade_fold.content.isHidden() is not shown
+    assert w.fade_header.isHidden() is not shown

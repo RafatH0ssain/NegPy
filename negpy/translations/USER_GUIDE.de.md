@@ -335,7 +335,7 @@ Für eine Kamera mit Schmalbandlicht, die von jedem Bild drei Aufnahmen macht: R
 
 Klicke mit der rechten Maustaste auf eine Hälfte für **Teilung für dieses Bild anpassen…** und **Teilung auf Rollenstandard zurücksetzen**. Wenn du Halbformat ausschaltest, bleiben bearbeitete Hälften als **Diptychon** nebeneinander. Schalte es wieder ein, um sie zu bearbeiten.
 
-<!-- panel:sensor src:2c94daa5 -->
+<!-- panel:sensor src:ae2fe2cb -->
 ### 10.3 Kalibrierung: Farben deines Scan-Aufbaus
 
 Korrigiert Farbfehler, die von Lichtquelle, Kamera und Film kommen.
@@ -353,6 +353,14 @@ Korrigiert Farbfehler, die von Lichtquelle, Kamera und Film kommen.
 *   Die Farbfeld-Schaltfläche öffnet **Aus Testtafel messen** (Farbnegative): Sie misst eine Matrix aus einer Aufnahme eines ColorChecker 24 oder SpyderCheckr 24 auf dem Film. Ziehe die vier Punkte auf die Eckfelder.
 
 **Farbton-Trimmung** (Kamera mit schmalbandigem Licht): dreht alle Farben auf dem Farbkreis, für ein Licht, das Gelb orange oder Grün oliv färbt. Lass den Wert bei weißem Licht auf 0. Sie wirkt auch bei Dias, wo das Sensor-Farbvermischungsprofil nicht wirkt.
+
+#### 10.3.1 Ausbleichrestaurierung: ausgeblichene Dias
+
+Gibt einem ausgeblichenen Dia seine Farbstoffschichten zurück. Danach entfernt die Farbstichentfernung ([§5.1](#51-filtration-color-balance)) den restlichen Farbstich.
+
+*   **Rot-Erhalt**: wie viel roter Farbstoff übrig ist. Senke den Wert, bis der Kontrast zurückkommt.
+*   **Grün-Erhalt** / **Blau-Erhalt**: wie viel grüner und blauer Farbstoff übrig ist, im Vergleich zu Rot. Unter 1,0 ist diese Schicht stärker ausgeblichen als Rot.
+*   **Schätzen**: stellt die Regler aus den Grautönen dieses Bildes ein. **Mitteltöne** stellt auch den Rot-Erhalt ein und passt zu einem stark ausgeblichenen Dia. **Grauumfang** passt zu einer leichten Ausbleichung mit tiefen Schatten.
 
 <!-- panel:process src:61c1c291 -->
 ### 10.5 Messung: Negativ → Positiv
