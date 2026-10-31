@@ -551,11 +551,13 @@
       "colorLines": [
         {
           "at": 2.6,
-          "color": "green"
+          "color": "green",
+          "thickness": 0.22
         },
         {
           "at": 3.5,
-          "color": "red"
+          "color": "red",
+          "thickness": 0.45
         }
       ]
     }
@@ -568,7 +570,24 @@
     "iso": 100,
     "format": "35mm",
     "colorType": "ColorNegative",
-    "notes": "Fuji-made consumer color negative; fine tabular grain, bright, moderate saturation, medium-low contrast, holds its color across exposure."
+    "notes": "Fuji-made consumer color negative; fine tabular grain, bright, moderate saturation, medium-low contrast, holds its color across exposure.",
+    "edge": {
+      "dx": "39-1",
+      "source": "photo of a Fujicolor 100 roll: FUJI and frame numbers on the rebate, DX 39-1; green (3.5 mm, inner) and red (2.6 mm, outer) color lines, the green thicker than the red",
+      "colorLines": [
+        {
+          "at": 3.5,
+          "color": "green",
+          "thickness": 0.45,
+          "dashed": true
+        },
+        {
+          "at": 2.6,
+          "color": "red",
+          "thickness": 0.22
+        }
+      ]
+    }
   },
   {
     "id": "film-fujifilm-provia-100f",
@@ -1632,7 +1651,10 @@
     "iso": 200,
     "format": "35mm",
     "colorType": "B&W Negative",
-    "notes": "Aviphot Pan 200 emulsion; fine grain, super-panchromatic."
+    "notes": "Aviphot Pan 200 emulsion; fine grain, super-panchromatic.",
+    "edge": {
+      "source": "photo of a Superpan 200 roll: ROLLEI SUPERPAN 200 and frame numbers on the rebate; no DX barcode visible"
+    }
   },
   {
     "id": "film-rollei-ortho-25-plus",

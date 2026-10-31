@@ -73,11 +73,21 @@ def test_photographed_rolls_print_as_on_the_film(library):
     # photographed rolls (edge-print-from-photo): the DX each shows on its rebate
     assert (style("film-fujifilm-400").layout, style("film-fujifilm-400").dx_number) == ("fuji", (95, 7))
     assert (style("film-lomography-cn-400").layout, style("film-lomography-cn-400").dx_number) == ("generic", (97, 9))
+    assert (style("film-fujifilm-fujicolor-100").layout, style("film-fujifilm-fujicolor-100").dx_number) == ("fuji", (39, 1))
+    assert [(c.at, c.color, c.thickness, c.dashed) for c in style("film-fujifilm-fujicolor-100").color_lines] == [
+        (3.5, "green", 0.45, True),
+        (2.6, "red", 0.22, False),
+    ]
+    assert (style("film-rollei-superpan-200").layout, style("film-rollei-superpan-200").dx_number) == ("generic", None)
+    assert style("film-rollei-superpan-200").color_lines == ()
 
 
 def test_superia_premium_400_prints_its_green_and_red_lines(library):
     style = edge_style(library.get_film_stock("film-fujifilm-superia-premium-400"), library)
-    assert [(line.at, line.color) for line in style.color_lines] == [(2.6, "green"), (3.5, "red")]
+    assert [(line.at, line.color, line.thickness, line.dashed) for line in style.color_lines] == [
+        (2.6, "green", 0.22, False),
+        (3.5, "red", 0.45, False),
+    ]
 
 
 @pytest.mark.parametrize(

@@ -166,10 +166,14 @@ class Lens:
 
 @dataclass(frozen=True)
 class EdgeColorLine:
-    """A solid colored line printed on the film edge, `at` mm from the edge, in a named `color` (green or red)."""
+    """A colored line printed on the film edge, `at` mm in from the edge, in a named `color` (green or red).
+    `thickness` is the line's height in mm; `None` takes the shared default, so the inner and outer lines can differ in weight.
+    `dashed` marks a line broken into solid segments with gaps, the other color staying solid (a few stocks print it so)."""
 
     at: float
     color: str
+    thickness: Optional[float] = None
+    dashed: bool = False
 
 
 @dataclass(frozen=True)
@@ -200,7 +204,15 @@ class FilmEdge:
         }
         result = {key: value for key, value in values.items() if value}
         if self.color_lines:
-            result["colorLines"] = [{"at": line.at, "color": line.color} for line in self.color_lines]
+            color_lines = []
+            for line in self.color_lines:
+                entry = {"at": line.at, "color": line.color}
+                if line.thickness is not None:
+                    entry["thickness"] = line.thickness
+                if line.dashed:
+                    entry["dashed"] = True
+                color_lines.append(entry)
+            result["colorLines"] = color_lines
         return result
 
     @classmethod
@@ -216,7 +228,12 @@ class FilmEdge:
             prints_as=str(data.get("printsAs") or data.get("prints_as") or ""),
             source=str(data.get("source") or ""),
             color_lines=tuple(
-                EdgeColorLine(float(line["at"]), str(line["color"]))
+                EdgeColorLine(
+                    float(line["at"]),
+                    str(line["color"]),
+                    thickness=(float(line["thickness"]) if line.get("thickness") is not None else None),
+                    dashed=bool(line.get("dashed", False)),
+                )
                 for line in (data.get("colorLines") or [])
                 if isinstance(line, dict) and "at" in line and "color" in line
             ),
