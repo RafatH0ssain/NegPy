@@ -1,15 +1,17 @@
 """A Positive TIFF decodes by Source Encoding, whatever Linear RAW says."""
 
+import io
 import os
 from dataclasses import replace
 
 import numpy as np
 import pytest
 import tifffile
+from PIL import Image
 
-from negpy.domain.models import ColorSpace, WorkspaceConfig
+from negpy.domain.models import ColorSpace, ExportFormat, WorkspaceConfig
 from negpy.features.process.logic import linear_raw_token
-from negpy.features.process.models import ProcessConfig, ProcessMode, SourceEncoding
+from negpy.features.process.models import ProcessConfig, ProcessMode, SourceEncoding, with_positive_source
 from negpy.features.process.path import positive_decode
 from negpy.infrastructure.loaders import source_encoding as se
 from negpy.infrastructure.loaders.source_kind import is_scanned_positive_source, with_scanner_positive_default
@@ -333,3 +335,57 @@ def test_a_scanner_slide_can_turn_positive_off() -> None:
     fake, applied = _fake_controller(on, "/x/scan.tif")
     AppController.set_positive_source(fake, False)
     assert applied[-1].process.positive_source is False
+
+
+def _neutral_positive(fmt: ExportFormat, space: str) -> WorkspaceConfig:
+    config = with_positive_source(replace(WorkspaceConfig(), process=ProcessConfig(process_mode=ProcessMode.E6)), True)
+    return replace(
+        config,
+        exposure=replace(config.exposure, auto_exposure=False, auto_normalize_contrast=False, cast_removal_strength=0.0),
+        lab=replace(config.lab, sharpen=0.0, chroma_denoise=0.0, skin_protection=0.0),
+        export=replace(config.export, export_fmt=fmt, export_bit_depth=16, export_color_space=space, jpeg_quality=100),
+    )
+
+
+def _export(processor, path: str, config: WorkspaceConfig) -> bytes:
+    data, error = processor.process_export(path, config, config.export, path, prefer_gpu=False)
+    assert data is not None, error
+    return data
+
+
+@pytest.mark.parametrize("fmt, ext", [(ExportFormat.TIFF, "tif"), (ExportFormat.JPEG, "jpg")])
+@pytest.mark.parametrize("space", [ColorSpace.ADOBE_RGB.value, ColorSpace.SRGB.value])
+def test_an_export_reopened_as_positive_exports_the_same_pixels(tmp_path, fmt, ext, space) -> None:
+    """With the Positive edits at neutral, the decode inverts the export encoding. The colors stay
+    inside sRGB: an 8-bit export near the sRGB gamut edge has its own rounding error."""
+    from negpy.services.rendering.image_processor import ImageProcessor
+
+    y, x = np.mgrid[0:48, 0:64] / np.array([48.0, 64.0])[:, None, None]
+    encoded = np.stack([0.2 + 0.6 * x, 0.5 + 0.15 * np.sin(3 * y + 1), 0.3 + 0.4 * x * y], axis=-1)
+    source = _write(tmp_path, np.round(encoded * 65535).astype(np.uint16), _icc("AdobeCompat-v4.icc"))
+    processor = ImageProcessor()
+    config = _neutral_positive(fmt, space)
+    first = tmp_path / f"first.{ext}"
+    first.write_bytes(_export(processor, source, config))
+    second = _export(processor, str(first), config)
+
+    def pixels(data: bytes) -> np.ndarray:
+        img = tifffile.imread(io.BytesIO(data)) if fmt is ExportFormat.TIFF else np.asarray(Image.open(io.BytesIO(data)))
+        return img.astype(np.float64) / np.iinfo(img.dtype).max
+
+    diff = np.abs(pixels(second) - pixels(first.read_bytes())) * 255.0
+    assert diff.mean() < 1.0 and np.percentile(diff, 99) < 4.0
+
+
+def test_a_positive_jpeg_decodes_by_auto_whatever_the_stored_encoding(tmp_path) -> None:
+    from negpy.infrastructure.loaders.jpeg_loader import JpegLoader
+
+    data = np.random.default_rng(3).integers(0, 256, (16, 24, 3), dtype=np.uint8)
+    path = str(tmp_path / "export.jpg")
+    Image.fromarray(data).save(path, quality=100, subsampling=0, icc_profile=_icc("AdobeCompat-v4.icc"))
+    decoded = np.asarray(Image.open(path)).astype(np.float32) / 255.0
+    for encoding in (SourceEncoding.AUTO, SourceEncoding.LINEAR):
+        ctx, metadata = JpegLoader().load(path, positive_decode=encoding)
+        with ctx as raw:
+            np.testing.assert_allclose(raw.data, working_oetf_decode(decoded), atol=5e-4)
+        assert metadata["source_encoding"] == "profile"
