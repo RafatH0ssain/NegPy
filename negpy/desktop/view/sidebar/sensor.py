@@ -4,7 +4,7 @@ from negpy.kernel.system.i18n import tr
 from PyQt6.QtWidgets import QDialog, QHBoxLayout
 
 from negpy.desktop.view.sidebar.base import BaseSidebar
-from negpy.desktop.view.styles.templates import field_label, hint_label, wrap_tooltip
+from negpy.desktop.view.styles.templates import field_label, hint_label, labeled_action, wrap_tooltip
 from negpy.desktop.view.widgets.file_dialogs import last_open_folder
 from negpy.desktop.view.sidebar.scan_setup import resolved_rig
 from negpy.desktop.view.widgets.fold import group_fold
@@ -12,15 +12,12 @@ from negpy.desktop.view.widgets.sliders import CompactSlider, SliderGroup
 from negpy.desktop.view.widgets.step_combo import StepCombo
 from negpy.features.process.fade import RATIO_BOUNDS, RED_SURVIVAL_BOUNDS, EstimateMethod, FadeEstimate
 from negpy.features.process.models import ProcessMode, SensorUnmix, invalidate_local_bounds
+from negpy.features.process.path import RenderPath, render_path
 from negpy.features.process.sensor import unmix_block_reason
 from negpy.features.rgbscan.models import is_rgb_triplet
 from negpy.features.stitch.models import stitch_has_triplets
 from negpy.services.assets.crosstalk import CrosstalkProfiles
 from negpy.services.assets.sensor import SensorProfiles
-
-#: The manual sliders share the estimator's bounds.
-_RATIO_SLIDER_RANGE = RATIO_BOUNDS
-
 
 _UNMIX_CHOICES = (
     (
@@ -56,7 +53,7 @@ def _estimate_hint(method: "EstimateMethod", chosen: "FadeEstimate", other: "Fad
             "Estimated: green {g}, blue {b}. Red Survival is not changed: set it by eye.", g=f"{chosen.green:.2f}", b=f"{chosen.blue:.2f}"
         )
     if chosen.reason:
-        text = chosen.reason + ". " + text
+        text = chosen.reason + " " + text
     if not (other.reason and other.green == 1.0 and other.blue == 1.0):
         name = tr("Gray Range") if method == EstimateMethod.MIDTONE else tr("Midtone")
         text += " " + tr("{method} reads green {g}, blue {b}.", method=name, g=f"{other.green:.2f}", b=f"{other.blue:.2f}")
@@ -162,19 +159,20 @@ class SensorSidebar(BaseSidebar):
         )
         self.fade_ratio_r_slider.setToolTip(tr("How much red dye is left in the slide. Lower it if the faded slide still looks flat."))
         self.fade_ratio_g_slider = CompactSlider(
-            tr("Green Survival"), *_RATIO_SLIDER_RANGE, conf.fade_ratio_g, step=0.01, precision=1000, has_neutral=True
+            tr("Green Survival"), *RATIO_BOUNDS, conf.fade_ratio_g, step=0.01, precision=1000, has_neutral=True
         )
         self.fade_ratio_g_slider.setToolTip(tr("How much green dye is left, compared with red. Below 1.0 means green faded more than red."))
         self.fade_ratio_b_slider = CompactSlider(
-            tr("Blue Survival"), *_RATIO_SLIDER_RANGE, conf.fade_ratio_b, step=0.01, precision=1000, has_neutral=True
+            tr("Blue Survival"), *RATIO_BOUNDS, conf.fade_ratio_b, step=0.01, precision=1000, has_neutral=True
         )
         self.fade_ratio_b_slider.setToolTip(tr("How much blue dye is left, compared with red. Below 1.0 means blue faded more than red."))
 
         estimate_row = QHBoxLayout()
-        self.estimate_fade_btn = self._icon_action(
-            "fa5s.magic", tr("Set Green and Blue Survival from the grays in this frame. If it finds no result, set them by hand.")
+        self.estimate_fade_btn = labeled_action(
+            "fa5s.magic",
+            tr("Estimate"),
+            tr("Sets the Survival sliders from the grays in this frame. If it finds no result, set them by hand."),
         )
-        self.estimate_fade_label = field_label(tr("Estimate"))
         self.estimate_method_combo = StepCombo.of(
             [tr("Midtone"), tr("Gray Range")],
             tr("How Estimate reads the grays: Midtone suits a badly faded slide, Gray Range a mild fade with deep shadows."),
@@ -188,7 +186,6 @@ class SensorSidebar(BaseSidebar):
         self.estimate_method_combo.setCurrentIndex(
             max(0, self.estimate_method_combo.findData(str(saved) if isinstance(saved, str) else ""))
         )
-        estimate_row.addWidget(self.estimate_fade_label)
         estimate_row.addWidget(self.estimate_fade_btn)
         estimate_row.addWidget(self.estimate_method_combo, 1)
 
@@ -491,7 +488,6 @@ class SensorSidebar(BaseSidebar):
             persist=persist,
             readback_metrics=persist,
             fade_ratio_r=val,
-            **invalidate_local_bounds(self.state.config.process),
         )
 
     def _on_fade_ratio_changed(self, ratio_g: float, ratio_b: float, persist: bool = True) -> None:
@@ -501,22 +497,23 @@ class SensorSidebar(BaseSidebar):
             readback_metrics=persist,
             fade_ratio_g=ratio_g,
             fade_ratio_b=ratio_b,
-            **invalidate_local_bounds(self.state.config.process),
         )
 
     def _on_estimate_fade(self) -> None:
-        from negpy.features.exposure.normalization import resolve_analysis_region
+        from negpy.desktop.workers.chart_fit import fade_estimate_grid
         from negpy.features.process.fade import estimate_fade
 
-        image = self.state.preview_raw
-        if image is None:
+        conf = self.state.config.process
+        if render_path(conf) is not RenderPath.TRANSFER:
+            return
+        source = self.controller.chart_fit_source()
+        grid = None if source is None else fade_estimate_grid(source)
+        if grid is None:
             self.fade_estimate_hint.setText(tr("No image loaded to estimate from."))
             self.fade_estimate_hint.setVisible(True)
             return
-        conf = self.state.config.process
-        roi, buffer = resolve_analysis_region(image.shape, None, conf.analysis_buffer, conf.analysis_rect)
         method = EstimateMethod(self.estimate_method_combo.currentData())
-        estimates = estimate_fade(image, conf.process_mode, roi, buffer, self.controller.camera_working_matrix())
+        estimates = estimate_fade(grid)
         chosen, other = estimates[method], estimates[next(m for m in EstimateMethod if m != method)]
         self.fade_estimate_hint.setText(_estimate_hint(method, chosen, other))
         self.fade_estimate_hint.setVisible(True)
@@ -536,7 +533,6 @@ class SensorSidebar(BaseSidebar):
             fade_ratio_r=red,
             fade_ratio_g=chosen.green,
             fade_ratio_b=chosen.blue,
-            **invalidate_local_bounds(conf),
         )
 
     def _on_hue_trim_changed(self, val: float, persist: bool = True) -> None:
@@ -579,10 +575,10 @@ class SensorSidebar(BaseSidebar):
             self.fade_ratio_r_slider.setValue(conf.fade_ratio_r)
             self.fade_ratio_g_slider.setValue(conf.fade_ratio_g)
             self.fade_ratio_b_slider.setValue(conf.fade_ratio_b)
-            e6 = conf.process_mode == ProcessMode.E6
+            transfer = render_path(conf) is RenderPath.TRANSFER
             # The content, never the fold: the fold's visibility is its open state.
-            self.fade_fold.content.setVisible(e6)
-            self.fade_estimate_hint.setVisible(e6 and bool(self.fade_estimate_hint.text()))
+            self.fade_fold.content.setVisible(transfer)
+            self.fade_estimate_hint.setVisible(transfer and bool(self.fade_estimate_hint.text()))
 
             self.hue_trim_slider.setValue(conf.hue_trim)
 
